@@ -7,17 +7,23 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 await run('npm', ['run', 'pack:all'], root);
 const directory = await mkdtemp(path.join(tmpdir(), 'processengine-consumer-'));
+const packages = [
+  ['@processengine/conductor', 'packages/conductor'],
+  ['@processengine/transport-kafka', 'packages/transport-kafka'],
+  ['@processengine/storage-postgres', 'packages/storage-postgres'],
+];
 
 try {
+  const dependencies = Object.fromEntries(await Promise.all(packages.map(async ([name, packagePath]) => {
+    const packageManifest = JSON.parse(await readFile(path.join(root, packagePath, 'package.json'), 'utf8'));
+    const tarball = `${name.replace(/^@/u, '').replace('/', '-')}-${packageManifest.version}.tgz`;
+    return [name, `file:${path.join(root, '.packages', tarball)}`];
+  })));
   const manifest = {
     name: 'processengine-package-smoke',
     private: true,
     type: 'module',
-    dependencies: {
-      '@processengine/conductor': `file:${path.join(root, '.packages/processengine-conductor-0.1.0.tgz')}`,
-      '@processengine/transport-kafka': `file:${path.join(root, '.packages/processengine-transport-kafka-0.1.0.tgz')}`,
-      '@processengine/storage-postgres': `file:${path.join(root, '.packages/processengine-storage-postgres-0.1.0.tgz')}`
-    }
+    dependencies,
   };
   await writeFile(path.join(directory, 'package.json'), JSON.stringify(manifest, null, 2));
   await writeFile(path.join(directory, 'smoke.mjs'), [

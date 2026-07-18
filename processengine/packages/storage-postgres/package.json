@@ -4,6 +4,11 @@
   "description": "Durable PostgreSQL storage adapter for ProcessEngine conductor",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/processengine/framework.git",
+    "directory": "processengine/packages/storage-postgres"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

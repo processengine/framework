@@ -1,0 +1,114 @@
+name: Publish npm packages
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify the tagged commit is on main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Use Node.js 24 with the public npm registry
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Use an OIDC-capable npm CLI
+        run: npm install --global npm@11.18.0
+
+      - name: Install exact dependencies
+        working-directory: processengine
+        run: npm ci
+
+      - name: Run deterministic checks
+        working-directory: processengine
+        run: npm run check
+
+      - name: Run package tarball smoke checks
+        working-directory: processengine
+        run: npm run check:packages
+
+      - name: Validate release metadata and registry availability
+        working-directory: processengine
+        run: node scripts/release-preflight.mjs "$GITHUB_REF_NAME"
+
+      - name: Publish conductor
+        working-directory: processengine/packages/conductor
+        run: npm publish --access public
+
+      - name: Publish Kafka transport
+        working-directory: processengine/packages/transport-kafka
+        run: npm publish --access public
+
+      - name: Publish PostgreSQL storage
+        working-directory: processengine/packages/storage-postgres
+        run: npm publish --access public
+
+      - name: Verify clean registry install and public imports
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_VERSION#v}"
+          packages=(
+            "@processengine/conductor@$version"
+            "@processengine/transport-kafka@$version"
+            "@processengine/storage-postgres@$version"
+          )
+          visible=false
+          for attempt in {1..12}; do
+            visible=true
+            for package in "${packages[@]}"; do
+              if ! npm view "$package" version >/dev/null 2>&1; then
+                visible=false
+                break
+              fi
+            done
+            if [[ "$visible" == true ]]; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$visible" != true ]]; then
+            echo "Published packages were not visible in npm after 60 seconds" >&2
+            exit 1
+          fi
+
+          smoke_directory="$(mktemp -d)"
+          trap 'rm -rf "$smoke_directory"' EXIT
+          cd "$smoke_directory"
+          npm init --yes >/dev/null
+          npm install --ignore-scripts --save-exact "${packages[@]}"
+          node --input-type=module --eval '
+            const conductor = await import("@processengine/conductor");
+            const testing = await import("@processengine/conductor/testing");
+            const kafka = await import("@processengine/transport-kafka");
+            const postgres = await import("@processengine/storage-postgres");
+            if (!conductor.compileFlow || !testing.createMemoryStorage ||
+                !kafka.createKafkaTransport || !postgres.postgresMigrations) {
+              throw new Error("Public registry import smoke failed");
+            }
+          '

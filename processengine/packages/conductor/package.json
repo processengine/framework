@@ -4,6 +4,11 @@
   "description": "Canonical ProcessEngine model, Flow3 compiler and durable conductor runtime",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/processengine/framework.git",
+    "directory": "processengine/packages/conductor"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

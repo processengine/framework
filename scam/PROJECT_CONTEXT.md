@@ -1,6 +1,6 @@
 # Project Context — ProcessEngine + test-shop contour
 
-Last verified: `2026-07-18`
+Last verified: `2026-07-19`
 
 ## Purpose and current goal
 
@@ -8,6 +8,9 @@ Last verified: `2026-07-18`
   of long-running domain business processes. The canonical model is
   `processengine/docs/PROCESSENGINE_CANON.md`.
 - **Current milestone (PE-M1)**: complete. Contract: `scam/TASK.md`.
+- **Active task (PE-M2)**: migrate npm publication from a long-lived project
+  token to GitHub Actions trusted publishing. Contract:
+  `scam/tasks/PE-M2-trusted-publishing.md`.
 - **Acceptance state**: all local deterministic, package, Compose, Kubernetes,
   resilience, and live SPI gates pass. GitHub `main` and all three npm packages
   are published; annotated tag `v0.1.0` is published and verified.
@@ -93,10 +96,14 @@ Primary evidence directories:
 - The project publication credential is stored as GitHub Actions secret
   `NPM_TOKEN`; it is not stored in the repository.
 
-## Completed task and next result
+## Current and completed work
 
-- Task Contract: `scam/TASK.md`.
-- Work record: `scam/work-records/PE-M1.md`.
+- Active Task Contract: `scam/tasks/PE-M2-trusted-publishing.md`.
+- Target result: all three packages trust the repository's OIDC publication
+  workflow; the former GitHub/npm token path is removed only after verification.
+
+- Completed Task Contract: `scam/TASK.md`.
+- Completed work record: `scam/work-records/PE-M1.md`.
 - Release commit/tag target:
   `417e1d731f33de02ebd3225e9dd72f5fdff7357e`.
 - Next work is selected from `docs/production-readiness/PLAN.md`; it is outside
