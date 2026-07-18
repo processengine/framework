@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "test-shop.fullname" . }}-migrations-{{ .Values.images.shopHost.tag | sha256sum | trunc 8 }}
+  labels:
+    {{- include "test-shop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrations
+spec:
+  backoffLimit: 10
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        {{- include "test-shop.selectorLabels" (dict "component" "migrations" "Release" .Release "Chart" .Chart "Values" .Values) | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: migrations
+          image: "{{ .Values.images.shopHost.repository }}:{{ .Values.images.shopHost.tag }}"
+          imagePullPolicy: {{ .Values.images.shopHost.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          envFrom: [{ configMapRef: { name: {{ include "test-shop.fullname" . }}-runtime } }]
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ include "test-shop.fullname" . }}-database, key: DATABASE_URL } }
+          command: ["/bin/sh", "-ec"]
+          args:
+            - node apps/shop-host/dist/migrate.js && node apps/shop-warehouse/dist/migrate.js && node apps/shop-payment/dist/migrate.js
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]

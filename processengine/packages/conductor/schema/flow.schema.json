@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://processengine.dev/schema/flow3/process-definition.json",
+  "title": "ProcessEngine Flow3 process definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "start", "steps"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]*$" },
+    "version": { "type": "string", "minLength": 1 },
+    "start": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" },
+    "steps": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" },
+      "additionalProperties": { "$ref": "#/$defs/step" }
+    }
+  },
+  "$defs": {
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["step", "resultType"],
+      "properties": {
+        "step": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" },
+        "resultType": { "enum": ["response", "error"] }
+      }
+    },
+    "step": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "operation", "next", "onError"],
+          "properties": {
+            "type": { "const": "operation" },
+            "operation": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]*$" },
+            "input": { "$ref": "#/$defs/input" },
+            "next": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" },
+            "onError": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input", "key", "routes"],
+          "properties": {
+            "type": { "const": "switch" },
+            "input": { "$ref": "#/$defs/input" },
+            "key": { "type": "string", "minLength": 1 },
+            "routes": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "outcome"],
+          "properties": {
+            "type": { "const": "end" },
+            "outcome": { "type": "string", "minLength": 1 },
+            "input": { "$ref": "#/$defs/input" }
+          }
+        }
+      ]
+    }
+  }
+}

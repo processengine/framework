@@ -1,0 +1,6 @@
+fullnameOverride: test-shop
+postgres:
+  persistence: { enabled: true }
+kafka:
+  persistence: { enabled: true }
+

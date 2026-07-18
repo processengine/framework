@@ -1,0 +1,57 @@
+[
+  {
+    "operation": "warehouse.reserve",
+    "destination": "shop.warehouse.commands.v1",
+    "completionSource": "test-shop.shop-warehouse",
+    "policy": {
+      "id": "local-standard",
+      "version": "1",
+      "completionTimeoutMs": 300000,
+      "dispatch": { "maxAttempts": 600, "retryDelayMs": 1000 }
+    }
+  },
+  {
+    "operation": "warehouse.release",
+    "destination": "shop.warehouse.commands.v1",
+    "completionSource": "test-shop.shop-warehouse",
+    "policy": {
+      "id": "local-compensation",
+      "version": "1",
+      "completionTimeoutMs": 300000,
+      "dispatch": { "maxAttempts": 600, "retryDelayMs": 1000 }
+    }
+  },
+  {
+    "operation": "payment.authorize",
+    "destination": "shop.payment.commands.v1",
+    "completionSource": "test-shop.shop-payment",
+    "policy": {
+      "id": "local-payment",
+      "version": "1",
+      "completionTimeoutMs": 180000,
+      "dispatch": { "maxAttempts": 600, "retryDelayMs": 1000 }
+    }
+  },
+  {
+    "operation": "payment.confirm",
+    "destination": "shop.payment.commands.v1",
+    "completionSource": "test-shop.shop-payment",
+    "policy": {
+      "id": "local-payment",
+      "version": "1",
+      "completionTimeoutMs": 300000,
+      "dispatch": { "maxAttempts": 600, "retryDelayMs": 1000 }
+    }
+  },
+  {
+    "operation": "payment.cancel",
+    "destination": "shop.payment.commands.v1",
+    "completionSource": "test-shop.shop-payment",
+    "policy": {
+      "id": "local-payment-compensation",
+      "version": "1",
+      "completionTimeoutMs": 300000,
+      "dispatch": { "maxAttempts": 600, "retryDelayMs": 1000 }
+    }
+  }
+]

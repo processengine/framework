@@ -1,0 +1,32 @@
+# Dependencies and build output
+node_modules/
+dist/
+
+# Reproducible framework tarballs (rebuilt via `npm run pack` / framework:stage)
+.packages/
+.framework/
+
+# Local caches and generated evidence
+.claude/
+.npm-cache/
+.artifacts/
+coverage/
+
+# Local credentials and machine-specific cluster configuration
+.env
+.env.*
+!.env.example
+.npmrc
+kubeconfig
+kubeconfig.*
+
+# Logs and OS cruft
+*.log
+.DS_Store
+
+# Cloned upstream methodology repo (has its own history)
+scam-methodology/
+
+# Leftover local bundles (reproducible)
+prev_bundle.zip
+*.tgz

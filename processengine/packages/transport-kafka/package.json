@@ -1,0 +1,42 @@
+{
+  "name": "@processengine/transport-kafka",
+  "version": "0.1.0",
+  "description": "Apache Kafka transport connector and operation worker for ProcessEngine",
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "import": "./dist/worker.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run test/record-validation.test.ts test/handler-supervisor.test.ts test/kafka-transport.test.ts test/worker.test.ts",
+    "test:live": "vitest run test/kafka.live.test.ts"
+  },
+  "peerDependencies": {
+    "@processengine/conductor": "^0.1.0"
+  },
+  "devDependencies": {
+    "@processengine/conductor": "0.1.0"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

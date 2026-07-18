@@ -1,0 +1,7 @@
+apiVersion: v2
+name: test-shop
+description: Docker Desktop acceptance contour for ProcessEngine conductor
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+

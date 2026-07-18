@@ -1,0 +1,50 @@
+{
+  "name": "@processengine/storage-postgres",
+  "version": "0.1.0",
+  "description": "Durable PostgreSQL storage adapter for ProcessEngine conductor",
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./migrations": {
+      "types": "./dist/migrations.d.ts",
+      "import": "./dist/migrations.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run test/*.test.ts",
+    "test:live": "vitest run test/live.conformance.test.ts",
+    "check": "npm run typecheck && npm run test"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@processengine/conductor": "^0.1.0"
+  },
+  "dependencies": {
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@processengine/conductor": "0.1.0",
+    "@types/node": "^22.15.0",
+    "@types/pg": "^8.15.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

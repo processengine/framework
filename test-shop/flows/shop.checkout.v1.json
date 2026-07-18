@@ -1,0 +1,201 @@
+{
+  "id": "shop.checkout",
+  "version": "1.0.0",
+  "start": "reserve-stock",
+  "steps": {
+    "reserve-stock": {
+      "type": "operation",
+      "operation": "warehouse.reserve",
+      "next": "authorize-payment",
+      "onError": "route-reserve-error"
+    },
+    "route-reserve-error": {
+      "type": "switch",
+      "input": { "step": "reserve-stock", "resultType": "error" },
+      "key": "code",
+      "routes": {
+        "OUT_OF_STOCK": "out-of-stock",
+        "WAREHOUSE_UNAVAILABLE": "warehouse-unavailable",
+        "HANDLER_FAILED": "warehouse-handler-failed",
+        "PROCESSENGINE_COMPLETION_TIMEOUT": "warehouse-timeout",
+        "PROCESSENGINE_DISPATCH_FAILED": "warehouse-dispatch-failed"
+      }
+    },
+    "authorize-payment": {
+      "type": "operation",
+      "operation": "payment.authorize",
+      "input": { "step": "reserve-stock", "resultType": "response" },
+      "next": "route-authorization",
+      "onError": "route-authorization-error"
+    },
+    "route-authorization": {
+      "type": "switch",
+      "input": { "step": "authorize-payment", "resultType": "response" },
+      "key": "resultCode",
+      "routes": {
+        "AUTHORIZED": "confirm-payment",
+        "DECLINED": "release-after-decline"
+      }
+    },
+    "route-authorization-error": {
+      "type": "switch",
+      "input": { "step": "authorize-payment", "resultType": "error" },
+      "key": "code",
+      "routes": {
+        "PAYMENT_UNAVAILABLE": "release-after-payment-error",
+        "HANDLER_FAILED": "release-after-payment-error",
+        "PROCESSENGINE_COMPLETION_TIMEOUT": "release-after-payment-error",
+        "PROCESSENGINE_DISPATCH_FAILED": "release-after-payment-error"
+      }
+    },
+    "confirm-payment": {
+      "type": "operation",
+      "operation": "payment.confirm",
+      "input": { "step": "authorize-payment", "resultType": "response" },
+      "next": "route-confirmation",
+      "onError": "route-confirmation-error"
+    },
+    "route-confirmation": {
+      "type": "switch",
+      "input": { "step": "confirm-payment", "resultType": "response" },
+      "key": "resultCode",
+      "routes": {
+        "CONFIRMED": "approved",
+        "CONFIRM_FAILED": "cancel-after-confirm-failure"
+      }
+    },
+    "route-confirmation-error": {
+      "type": "switch",
+      "input": { "step": "confirm-payment", "resultType": "error" },
+      "key": "code",
+      "routes": {
+        "PAYMENT_CONFIRM_UNAVAILABLE": "cancel-after-confirm-error",
+        "HANDLER_FAILED": "cancel-after-confirm-error",
+        "PROCESSENGINE_COMPLETION_TIMEOUT": "cancel-after-confirm-error",
+        "PROCESSENGINE_DISPATCH_FAILED": "cancel-after-confirm-error"
+      }
+    },
+    "cancel-after-confirm-failure": {
+      "type": "operation",
+      "operation": "payment.cancel",
+      "input": { "step": "authorize-payment", "resultType": "response" },
+      "next": "release-after-confirm-failure",
+      "onError": "confirm-failure-payment-compensation-failed"
+    },
+    "cancel-after-confirm-error": {
+      "type": "operation",
+      "operation": "payment.cancel",
+      "input": { "step": "authorize-payment", "resultType": "response" },
+      "next": "release-after-confirm-error",
+      "onError": "confirm-error-payment-compensation-failed"
+    },
+    "release-after-decline": {
+      "type": "operation",
+      "operation": "warehouse.release",
+      "input": { "step": "reserve-stock", "resultType": "response" },
+      "next": "payment-declined",
+      "onError": "decline-compensation-failed"
+    },
+    "release-after-payment-error": {
+      "type": "operation",
+      "operation": "warehouse.release",
+      "input": { "step": "reserve-stock", "resultType": "response" },
+      "next": "payment-error-compensated",
+      "onError": "payment-error-compensation-failed"
+    },
+    "release-after-confirm-failure": {
+      "type": "operation",
+      "operation": "warehouse.release",
+      "input": { "step": "reserve-stock", "resultType": "response" },
+      "next": "payment-confirm-failed",
+      "onError": "confirm-failure-compensation-failed"
+    },
+    "release-after-confirm-error": {
+      "type": "operation",
+      "operation": "warehouse.release",
+      "input": { "step": "reserve-stock", "resultType": "response" },
+      "next": "payment-confirm-error-compensated",
+      "onError": "confirm-error-compensation-failed"
+    },
+    "approved": {
+      "type": "end",
+      "outcome": "APPROVED",
+      "input": { "step": "confirm-payment", "resultType": "response" }
+    },
+    "out-of-stock": {
+      "type": "end",
+      "outcome": "OUT_OF_STOCK",
+      "input": { "step": "reserve-stock", "resultType": "error" }
+    },
+    "warehouse-unavailable": {
+      "type": "end",
+      "outcome": "WAREHOUSE_UNAVAILABLE",
+      "input": { "step": "reserve-stock", "resultType": "error" }
+    },
+    "warehouse-handler-failed": {
+      "type": "end",
+      "outcome": "WAREHOUSE_HANDLER_FAILED",
+      "input": { "step": "reserve-stock", "resultType": "error" }
+    },
+    "warehouse-timeout": {
+      "type": "end",
+      "outcome": "WAREHOUSE_TIMEOUT",
+      "input": { "step": "reserve-stock", "resultType": "error" }
+    },
+    "warehouse-dispatch-failed": {
+      "type": "end",
+      "outcome": "WAREHOUSE_DISPATCH_FAILED",
+      "input": { "step": "reserve-stock", "resultType": "error" }
+    },
+    "payment-declined": {
+      "type": "end",
+      "outcome": "PAYMENT_DECLINED",
+      "input": { "step": "authorize-payment", "resultType": "response" }
+    },
+    "decline-compensation-failed": {
+      "type": "end",
+      "outcome": "COMPENSATION_FAILED",
+      "input": { "step": "release-after-decline", "resultType": "error" }
+    },
+    "payment-error-compensated": {
+      "type": "end",
+      "outcome": "PAYMENT_ERROR_COMPENSATED",
+      "input": { "step": "authorize-payment", "resultType": "error" }
+    },
+    "payment-error-compensation-failed": {
+      "type": "end",
+      "outcome": "COMPENSATION_FAILED",
+      "input": { "step": "release-after-payment-error", "resultType": "error" }
+    },
+    "payment-confirm-failed": {
+      "type": "end",
+      "outcome": "PAYMENT_CONFIRM_FAILED",
+      "input": { "step": "confirm-payment", "resultType": "response" }
+    },
+    "confirm-failure-compensation-failed": {
+      "type": "end",
+      "outcome": "COMPENSATION_FAILED",
+      "input": { "step": "release-after-confirm-failure", "resultType": "error" }
+    },
+    "confirm-failure-payment-compensation-failed": {
+      "type": "end",
+      "outcome": "PAYMENT_COMPENSATION_FAILED",
+      "input": { "step": "cancel-after-confirm-failure", "resultType": "error" }
+    },
+    "payment-confirm-error-compensated": {
+      "type": "end",
+      "outcome": "PAYMENT_CONFIRM_ERROR_COMPENSATED",
+      "input": { "step": "confirm-payment", "resultType": "error" }
+    },
+    "confirm-error-compensation-failed": {
+      "type": "end",
+      "outcome": "COMPENSATION_FAILED",
+      "input": { "step": "release-after-confirm-error", "resultType": "error" }
+    },
+    "confirm-error-payment-compensation-failed": {
+      "type": "end",
+      "outcome": "PAYMENT_COMPENSATION_FAILED",
+      "input": { "step": "cancel-after-confirm-error", "resultType": "error" }
+    }
+  }
+}

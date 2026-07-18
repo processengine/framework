@@ -1,0 +1,29 @@
+{
+  "name": "processengine-framework",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ProcessEngine framework monorepo",
+  "workspaces": [
+    "packages/conductor",
+    "packages/transport-kafka",
+    "packages/storage-postgres"
+  ],
+  "scripts": {
+    "clean": "npm run clean --workspaces --if-present",
+    "build": "npm run build --workspace @processengine/conductor && npm run build --workspace @processengine/transport-kafka && npm run build --workspace @processengine/storage-postgres",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "check": "npm run build && npm run typecheck && npm run test",
+    "pack:all": "npm run build && node scripts/pack-all.mjs",
+    "check:packages": "node scripts/package-smoke.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/pg": "^8.15.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

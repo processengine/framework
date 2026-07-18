@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "test-shop.fullname" . }}-runtime
+  labels:
+    {{- include "test-shop.labels" . | nindent 4 }}
+data:
+  KAFKA_BROKERS: {{ printf "%s-kafka:9092" (include "test-shop.fullname" .) | quote }}
+  COMPLETION_TOPIC: {{ .Values.topics.operationCompletions | quote }}
+  DEBUG_API_ENABLED: {{ .Values.demo.debugApiEnabled | quote }}
+  DEMO_FAULTS_ENABLED: {{ .Values.demo.faultsEnabled | quote }}
+  STARTUP_TIMEOUT_MS: "120000"
+  FLOW_ACTIVE_VERSION: {{ .Values.flow.activeVersion | quote }}

@@ -1,0 +1,70 @@
+nameOverride: ""
+fullnameOverride: ""
+
+images:
+  shopHost: { repository: processengine/test-shop-shop-host, tag: dev, pullPolicy: IfNotPresent }
+  shopWarehouse: { repository: processengine/test-shop-shop-warehouse, tag: dev, pullPolicy: IfNotPresent }
+  shopPayment: { repository: processengine/test-shop-shop-payment, tag: dev, pullPolicy: IfNotPresent }
+
+shopHost:
+  replicas: 2
+  port: 3000
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits: { cpu: 500m, memory: 384Mi }
+shopWarehouse:
+  replicas: 2
+  port: 8081
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 300m, memory: 256Mi }
+shopPayment:
+  replicas: 2
+  port: 8082
+  delayedResponseMs: 15000
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 300m, memory: 256Mi }
+
+topics:
+  warehouseCommands: shop.warehouse.commands.v1
+  paymentCommands: shop.payment.commands.v1
+  operationCompletions: shop.operation.completions.v1
+  partitions: 3
+
+demo: { debugApiEnabled: true, faultsEnabled: true }
+flow: { activeVersion: "1.0.0" }
+
+postgres:
+  image: postgres:16.8-alpine
+  database: processengine
+  username: processengine
+  # Leave empty to generate a cluster-local password on first install. Helm
+  # reuses the password from the existing Secret during upgrades.
+  password: ""
+  storage: 1Gi
+  persistence: { enabled: false, storageClassName: "" }
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+kafka:
+  image: apache/kafka:4.3.1
+  heapOpts: -Xms256m -Xmx512m
+  storage: 1Gi
+  persistence: { enabled: false, storageClassName: "" }
+  resources:
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+probes:
+  startup: { failureThreshold: 60, periodSeconds: 2, timeoutSeconds: 1 }
+  readiness: { failureThreshold: 5, periodSeconds: 2, timeoutSeconds: 1 }
+  liveness: { failureThreshold: 3, periodSeconds: 10, timeoutSeconds: 1 }
+# Kept short so a pod whose operation handler is deliberately blocked (e.g. the
+# rolling-update barrier holding payment.authorize) terminates promptly during a
+# rollout instead of lingering to the grace deadline. Abrupt termination is safe
+# by design: domain commits are atomic, delivery is at-least-once and processing
+# is idempotent with lease fencing, so a killed in-flight handler is redelivered
+# and replayed without a duplicate effect.
+terminationGracePeriodSeconds: 5

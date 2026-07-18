@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "test-shop.fullname" . }}-postgres
+  labels:
+    {{- include "test-shop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  selector:
+    {{- include "test-shop.selectorLabels" (dict "component" "postgres" "Release" .Release "Chart" .Chart "Values" .Values) | nindent 4 }}
+  ports: [{ name: postgres, port: 5432, targetPort: postgres }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "test-shop.fullname" . }}-postgres
+  labels:
+    {{- include "test-shop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  serviceName: {{ include "test-shop.fullname" . }}-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "test-shop.selectorLabels" (dict "component" "postgres" "Release" .Release "Chart" .Chart "Values" .Values) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "test-shop.selectorLabels" (dict "component" "postgres" "Release" .Release "Chart" .Chart "Values" .Values) | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext: { fsGroup: 70, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image | quote }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            runAsNonRoot: true
+            runAsUser: 70
+          env:
+            - { name: POSTGRES_USER, valueFrom: { secretKeyRef: { name: {{ include "test-shop.fullname" . }}-database, key: username } } }
+            - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: {{ include "test-shop.fullname" . }}-database, key: password } } }
+            - { name: POSTGRES_DB, valueFrom: { secretKeyRef: { name: {{ include "test-shop.fullname" . }}-database, key: database } } }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports: [{ name: postgres, containerPort: 5432 }]
+          startupProbe:
+            exec: { command: ["sh", "-ec", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"] }
+            failureThreshold: 60
+            periodSeconds: 2
+          readinessProbe:
+            exec: { command: ["sh", "-ec", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"] }
+            periodSeconds: 3
+          livenessProbe:
+            exec: { command: ["sh", "-ec", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"] }
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+      {{- if not .Values.postgres.persistence.enabled }}
+      volumes: [{ name: data, emptyDir: {} }]
+      {{- end }}
+  {{- if .Values.postgres.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.postgres.persistence.storageClassName }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources: { requests: { storage: {{ .Values.postgres.storage }} } }
+  {{- end }}
+

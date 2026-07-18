@@ -1,0 +1,104 @@
+{{- $root := . -}}
+{{- range $app := list
+  (dict "name" "shop-host" "image" .Values.images.shopHost "config" .Values.shopHost "port" .Values.shopHost.port)
+  (dict "name" "shop-warehouse" "image" .Values.images.shopWarehouse "config" .Values.shopWarehouse "port" .Values.shopWarehouse.port)
+  (dict "name" "shop-payment" "image" .Values.images.shopPayment "config" .Values.shopPayment "port" .Values.shopPayment.port)
+}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "test-shop.fullname" $root }}-{{ $app.name }}
+  labels:
+    {{- include "test-shop.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $app.name }}
+spec:
+  selector:
+    {{- include "test-shop.selectorLabels" (dict "component" $app.name "Release" $root.Release "Chart" $root.Chart "Values" $root.Values) | nindent 4 }}
+  ports: [{ name: http, port: {{ $app.port }}, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "test-shop.fullname" $root }}-{{ $app.name }}
+  labels:
+    {{- include "test-shop.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $app.name }}
+spec:
+  replicas: {{ $app.config.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 1, maxSurge: 1 }
+  selector:
+    matchLabels:
+      {{- include "test-shop.selectorLabels" (dict "component" $app.name "Release" $root.Release "Chart" $root.Chart "Values" $root.Values) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "test-shop.selectorLabels" (dict "component" $app.name "Release" $root.Release "Chart" $root.Chart "Values" $root.Values) | nindent 8 }}
+      annotations:
+        checksum/runtime: {{ include (print $root.Template.BasePath "/configmap.yaml") $root | sha256sum }}
+        processengine.io/image-tag: {{ $app.image.tag | quote }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ $root.Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: {{ $app.name }}
+          image: "{{ $app.image.repository }}:{{ $app.image.tag }}"
+          imagePullPolicy: {{ $app.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities: { drop: ["ALL"] }
+          envFrom:
+            - configMapRef: { name: {{ include "test-shop.fullname" $root }}-runtime }
+          env:
+            - { name: PORT, value: {{ $app.port | quote }} }
+            - { name: KAFKA_CLIENT_ID, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ include "test-shop.fullname" $root }}-database, key: DATABASE_URL } }
+            {{- if eq $app.name "shop-host" }}
+            - { name: KAFKA_CONSUMER_GROUP, value: test-shop-shop-host-v1 }
+            - { name: FLOW_FILES, value: "/app/test-shop/flows/shop.checkout.v1.json,/app/test-shop/flows/shop.checkout.v2.json" }
+            - { name: OPERATIONS_FILE, value: /app/test-shop/config/operations.json }
+            {{- else if eq $app.name "shop-warehouse" }}
+            - { name: KAFKA_CONSUMER_GROUP, value: test-shop-shop-warehouse-v1 }
+            - { name: COMMAND_TOPIC, value: {{ $root.Values.topics.warehouseCommands | quote }} }
+            {{- else }}
+            - { name: KAFKA_CONSUMER_GROUP, value: test-shop-shop-payment-v1 }
+            - { name: COMMAND_TOPIC, value: {{ $root.Values.topics.paymentCommands | quote }} }
+            - { name: DELAYED_RESPONSE_MS, value: {{ $root.Values.shopPayment.delayedResponseMs | quote }} }
+            {{- end }}
+          ports: [{ name: http, containerPort: {{ $app.port }} }]
+          startupProbe:
+            httpGet: { path: /health/live, port: http }
+            {{- toYaml $root.Values.probes.startup | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            {{- toYaml $root.Values.probes.readiness | nindent 12 }}
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            {{- toYaml $root.Values.probes.liveness | nindent 12 }}
+          resources:
+            {{- toYaml $app.config.resources | nindent 12 }}
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+{{- end }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "test-shop.fullname" . }}-shop-host
+  labels:
+    {{- include "test-shop.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "test-shop.selectorLabels" (dict "component" "shop-host" "Release" .Release "Chart" .Chart "Values" .Values) | nindent 6 }}

@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "test-shop.fullname" . }}-topics-{{ printf "%s|%s|%s|%v" .Values.topics.warehouseCommands .Values.topics.paymentCommands .Values.topics.operationCompletions .Values.topics.partitions | sha256sum | trunc 8 }}
+  labels:
+    {{- include "test-shop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: topic-initializer
+spec:
+  backoffLimit: 10
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        {{- include "test-shop.selectorLabels" (dict "component" "topic-initializer" "Release" .Release "Chart" .Chart "Values" .Values) | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: topics
+          image: {{ .Values.kafka.image | quote }}
+          imagePullPolicy: IfNotPresent
+          env: [{ name: KAFKA_HEAP_OPTS, value: "-Xms64m -Xmx128m" }]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+          command: ["/bin/bash", "-euc"]
+          args:
+            - |
+              broker={{ include "test-shop.fullname" . }}-kafka:9092
+              until /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$broker" --list >/dev/null 2>&1; do sleep 1; done
+              for topic in {{ .Values.topics.warehouseCommands }} {{ .Values.topics.paymentCommands }} {{ .Values.topics.operationCompletions }}; do
+                /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$broker" --create --if-not-exists \
+                  --topic "$topic" --partitions={{ .Values.topics.partitions }} --replication-factor=1
+              done

@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "test-shop.fullname" . }}-health-test
+  labels:
+    {{- include "test-shop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: helm-test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext: { runAsNonRoot: true, runAsUser: 1000, seccompProfile: { type: RuntimeDefault } }
+  containers:
+    - name: health
+      image: "{{ .Values.images.shopHost.repository }}:{{ .Values.images.shopHost.tag }}"
+      imagePullPolicy: {{ .Values.images.shopHost.pullPolicy }}
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: { drop: ["ALL"] }
+      command: ["node", "-e"]
+      args:
+        - |
+          const endpoints = [
+            'http://{{ include "test-shop.fullname" . }}-shop-host:{{ .Values.shopHost.port }}/health/ready',
+            'http://{{ include "test-shop.fullname" . }}-shop-warehouse:{{ .Values.shopWarehouse.port }}/health/ready',
+            'http://{{ include "test-shop.fullname" . }}-shop-payment:{{ .Values.shopPayment.port }}/health/ready'
+          ];
+          await Promise.all(endpoints.map(async url => {
+            const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+            if (!response.ok) throw new Error(`${url}: ${response.status}`);
+          }));
+

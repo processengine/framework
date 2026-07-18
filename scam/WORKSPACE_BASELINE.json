@@ -1,0 +1,53 @@
+{
+  "baselineId": "PE-M1-0.1.0",
+  "capturedAt": "2026-07-18",
+  "releaseVersion": "0.1.0",
+  "license": "Apache-2.0",
+  "components": [
+    {
+      "component": "@processengine/conductor",
+      "path": "processengine/packages/conductor",
+      "version": "0.1.0",
+      "worktree": "clean-at-start"
+    },
+    {
+      "component": "@processengine/transport-kafka",
+      "path": "processengine/packages/transport-kafka",
+      "version": "0.1.0",
+      "worktree": "clean-at-start"
+    },
+    {
+      "component": "@processengine/storage-postgres",
+      "path": "processengine/packages/storage-postgres",
+      "version": "0.1.0",
+      "worktree": "clean-at-start"
+    },
+    {
+      "component": "test-shop (consumer)",
+      "path": "test-shop",
+      "version": "0.1.0",
+      "consumesFrameworkVia": "test-shop/.framework/*.tgz",
+      "worktree": "modified (Dockerfile build-stage ownership fix)"
+    }
+  ],
+  "toolchain": {
+    "hostNode": "20.19.0",
+    "usedNode": "22.23.1 (nvm)",
+    "npm": "10.9.8",
+    "docker": "29.6.1",
+    "kubectlClient": "1.33.4",
+    "kubernetesServer": "1.36.1",
+    "helm": "4.2.1",
+    "kubeContext": "docker-desktop"
+  },
+  "infraImages": {
+    "kafka": "apache/kafka:4.3.1 (KRaft mode)",
+    "postgres": "postgres:16.8-alpine",
+    "appBase": "node:22.13.0-bookworm-slim"
+  },
+  "publishTargets": {
+    "github": "https://github.com/processengine/framework (branch main)",
+    "npmScope": "@processengine",
+    "tag": "v0.1.0"
+  }
+}

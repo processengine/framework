@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "test-shop.fullname" . }}-kafka
+  labels:
+    {{- include "test-shop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kafka
+spec:
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "test-shop.selectorLabels" (dict "component" "kafka" "Release" .Release "Chart" .Chart "Values" .Values) | nindent 4 }}
+  ports: [{ name: kafka, port: 9092, targetPort: kafka }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "test-shop.fullname" . }}-kafka
+  labels:
+    {{- include "test-shop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kafka
+spec:
+  serviceName: {{ include "test-shop.fullname" . }}-kafka
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "test-shop.selectorLabels" (dict "component" "kafka" "Release" .Release "Chart" .Chart "Values" .Values) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "test-shop.selectorLabels" (dict "component" "kafka" "Release" .Release "Chart" .Chart "Values" .Values) | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext: { fsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: kafka
+          image: {{ .Values.kafka.image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: KAFKA_NODE_ID, value: "1" }
+            - { name: KAFKA_PROCESS_ROLES, value: "broker,controller" }
+            - { name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP, value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT" }
+            - { name: KAFKA_LISTENERS, value: "CONTROLLER://:29093,PLAINTEXT://:9092" }
+            - { name: KAFKA_ADVERTISED_LISTENERS, value: {{ printf "PLAINTEXT://%s-kafka:9092" (include "test-shop.fullname" .) | quote }} }
+            - { name: KAFKA_INTER_BROKER_LISTENER_NAME, value: "PLAINTEXT" }
+            - { name: KAFKA_CONTROLLER_LISTENER_NAMES, value: "CONTROLLER" }
+            - { name: KAFKA_CONTROLLER_QUORUM_VOTERS, value: "1@127.0.0.1:29093" }
+            - { name: CLUSTER_ID, value: "4L6g3nShT-eMCtK--X86sw" }
+            - { name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS, value: "0" }
+            - { name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR, value: "1" }
+            - { name: KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR, value: "1" }
+            - { name: KAFKA_NUM_PARTITIONS, value: "3" }
+            - { name: KAFKA_LOG_DIRS, value: "/var/lib/kafka/data" }
+            - { name: KAFKA_HEAP_OPTS, value: {{ .Values.kafka.heapOpts | quote }} }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+          ports: [{ name: kafka, containerPort: 9092 }, { name: controller, containerPort: 29093 }]
+          startupProbe:
+            exec: { command: ["/bin/bash", "-euc", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list >/dev/null"] }
+            failureThreshold: 60
+            periodSeconds: 2
+            timeoutSeconds: 10
+          readinessProbe:
+            exec: { command: ["/bin/bash", "-euc", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list >/dev/null"] }
+            failureThreshold: 5
+            periodSeconds: 5
+            timeoutSeconds: 10
+          livenessProbe: { tcpSocket: { port: kafka }, failureThreshold: 3, periodSeconds: 10, timeoutSeconds: 1 }
+          resources:
+            {{- toYaml .Values.kafka.resources | nindent 12 }}
+          volumeMounts: [{ name: data, mountPath: /var/lib/kafka/data }]
+      {{- if not .Values.kafka.persistence.enabled }}
+      volumes: [{ name: data, emptyDir: {} }]
+      {{- end }}
+  {{- if .Values.kafka.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.kafka.persistence.storageClassName }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources: { requests: { storage: {{ .Values.kafka.storage }} } }
+  {{- end }}
+

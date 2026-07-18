@@ -1,0 +1,43 @@
+{
+  "name": "@processengine/conductor",
+  "version": "0.1.0",
+  "description": "Canonical ProcessEngine model, Flow3 compiler and durable conductor runtime",
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
+    },
+    "./schema/flow.schema.json": "./schema/flow.schema.json"
+  },
+  "files": [
+    "dist",
+    "schema",
+    "README.md"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

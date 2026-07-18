@@ -1,0 +1,20 @@
+{
+  "name": "processengine-local-contour",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Framework and long-running Docker Desktop Kubernetes acceptance contour",
+  "scripts": {
+    "bootstrap": "node scripts/contour.mjs bootstrap",
+    "check": "node scripts/contour.mjs check",
+    "pack": "node scripts/contour.mjs pack",
+    "k8s:doctor": "npm --prefix test-shop run k8s:doctor",
+    "k8s:deploy": "npm --prefix test-shop run k8s:deploy",
+    "k8s:test": "npm --prefix test-shop run k8s:test",
+    "k8s:resilience": "npm --prefix test-shop run k8s:resilience",
+    "k8s:collect": "npm --prefix test-shop run k8s:collect",
+    "k8s:down": "npm --prefix test-shop run k8s:down"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
