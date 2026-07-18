@@ -1,13 +1,13 @@
 # Work Record: PE-M1 — Local Kubernetes contour to verified release 0.1.0
 
 Date: `2026-07-18`
-Status: `SOURCE PUBLISHED — NPM PUBLICATION PENDING`
+Status: `NPM PUBLISHED — RELEASE TAG PENDING`
 
 ## Task Contract
 
 See `scam/TASK.md`. The local contour and all executable acceptance gates are
-complete. GitHub `main` is published; npm publication and the release tag are
-not yet complete.
+complete. GitHub `main` and the npm packages are published; only the release
+tag is pending.
 
 ## Starting baseline
 
@@ -45,6 +45,10 @@ Runtime-accepted source commit:
 `6956299de7da03d8074530f0856339e0915c8146`; exact image tag:
 `sha-d3eb3338ca20f71f`.
 
+Post-publication consumer commit:
+`c6d6fcab49f52184c0349a6b7f07bd1dcd144f27`; exact registry-backed image tag:
+`sha-d923f6427af27545`.
+
 | Gate | Result | Evidence |
 | --- | --- | --- |
 | Framework deterministic/package | PASS: 57 passed, 8 live skipped | `test-shop/.artifacts/k8s/2026-07-18T19-22-15.3NZ-local-gates-pass/` |
@@ -55,6 +59,9 @@ Runtime-accepted source commit:
 | Kubernetes resilience | PASS: 8/8 | `test-shop/.artifacts/k8s/2026-07-18T19-19-07.805Z-resilience-pass/` |
 | Live PostgreSQL SPI | PASS: 6/6 | `test-shop/.artifacts/k8s/2026-07-18T19-19-52.3NZ-live-conformance-pass/` |
 | Live Kafka SPI | PASS: 2/2 | same live-conformance directory |
+| Anonymous registry install/import | PASS: all three packages at 0.1.0 | public npm registry, Node 22 container |
+| Registry-backed Helm deploy | PASS: revision 34, six app pods on `sha-d923f6427af27545` | `test-shop/.artifacts/k8s/2026-07-18T20-55-36.992Z-deploy-pass/` |
+| Registry-backed Kubernetes business | PASS: 16/16 | `test-shop/.artifacts/k8s/2026-07-18T20-59-27.257Z-business-pass/` |
 
 The PostgreSQL recovery fix was additionally isolated by a focused successful
 run in `test-shop/.artifacts/k8s/2026-07-18T19-08-07.550Z-resilience-pass/`.
@@ -80,14 +87,17 @@ run in `test-shop/.artifacts/k8s/2026-07-18T19-08-07.550Z-resilience-pass/`.
 - GitHub `main` was published and read back at
   `8968afb41a7303c86a8f2a734561f2cb82ed7fb4` for the initial accepted
   source-and-reports commit.
-- npm publication, registry-consumer verification, and annotated tag `v0.1.0`
-  have not yet been performed.
-- Package metadata is `Apache-2.0`; confirmation of the license-owner decision
-  is pending immediately before npm publish.
+- All three packages were published publicly at `0.1.0` and verified by
+  anonymous install/import. The user directly confirmed Apache-2.0 immediately
+  before publication.
+- `test-shop` now consumes the registry packages; its deterministic and live
+  Kubernetes business gates passed.
+- Annotated tag `v0.1.0` has not yet been created.
+- GitHub Actions secret `NPM_TOKEN` is configured; its value is not stored in
+  the repository.
 
 ## Remaining publication sequence
 
-1. Check npm authentication, scope ownership, and `0.1.0` availability.
-2. Obtain the required license-owner confirmation and publish all three packages.
-3. Clean-install the registry packages, repoint and re-smoke `test-shop`.
-4. Create and push annotated tag `v0.1.0` only after registry verification.
+1. Commit and push the post-publication consumer/report state.
+2. Verify local `main`, remote `main`, and the GitHub commits API agree.
+3. Create, push, and read back annotated tag `v0.1.0`.

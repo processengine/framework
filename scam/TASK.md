@@ -64,7 +64,7 @@ contour is left running.
 - [x] Evidence collected under `test-shop/.artifacts/k8s/**`; reports written.
 - [x] GitHub `main` push == local commit; sources/docs/helm/migrations included,
       no secrets/node_modules/dist.
-- [ ] Three packages published to npm `@processengine@0.1.0`, verified by clean
+- [x] Three packages published to npm `@processengine@0.1.0`, verified by clean
       install; `test-shop` repointed to published versions and re-smoked.
 - [ ] Annotated tag `v0.1.0` pushed only after npm publish succeeds.
 - [x] `docs/production-readiness/PLAN.md` + P0/P1 SCAM task files exist.
@@ -88,10 +88,8 @@ this project's own namespace/resources/images/volumes.
 
 - `CONSTRAINT`: host Node is 20.19; Node 22.13.0 containers were used for app
   and live SPI execution. Project `engines`/lockfiles remain unchanged.
-- `RISK`: `@processengine` npm scope / `v0.1.0` name may be taken or require
-  auth → BLOCKED pending user, recorded honestly.
-- `RISK`: package metadata says `Apache-2.0`, but the license-owner decision
-  still requires direct confirmation immediately before npm publish.
+- `RESOLVED`: the user directly confirmed Apache-2.0; npm scope ownership,
+  version availability, publication, and anonymous registry install passed.
 
 ## Verified acceptance evidence
 
@@ -109,11 +107,11 @@ this project's own namespace/resources/images/volumes.
 
 ## Publication state
 
-Local acceptance and GitHub `main` publication are complete. The initial
+Local acceptance, GitHub source publication, npm publication, registry install,
+and registry-backed Kubernetes business verification are complete. The initial
 accepted source-and-reports push was independently verified at
-`8968afb41a7303c86a8f2a734561f2cb82ed7fb4`. npm packages,
-registry-consumer verification, and tag `v0.1.0` remain unchecked until those
-external actions are completed and independently verified.
+`8968afb41a7303c86a8f2a734561f2cb82ed7fb4`. Only tag `v0.1.0` remains
+unchecked until it is created, pushed, and read back.
 
 ## Stop conditions
 

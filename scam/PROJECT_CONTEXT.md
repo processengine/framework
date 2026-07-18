@@ -7,12 +7,11 @@ Last verified: `2026-07-18`
 - **Purpose**: ProcessEngine is a framework for durable, deterministic execution
   of long-running domain business processes. The canonical model is
   `processengine/docs/PROCESSENGINE_CANON.md`.
-- **Current milestone (PE-M1)**: publish the three accepted framework packages,
-  verify a registry-based consumer, and create tag `v0.1.0`. Contract:
-  `scam/TASK.md`.
+- **Current milestone (PE-M1)**: create and verify annotated tag `v0.1.0` for
+  the accepted and published release. Contract: `scam/TASK.md`.
 - **Acceptance state**: all local deterministic, package, Compose, Kubernetes,
-  resilience, and live SPI gates pass. GitHub `main` is published; npm is
-  pending.
+  resilience, and live SPI gates pass. GitHub `main` and all three npm packages
+  are published; the release tag is pending.
 
 ## System map and ownership
 
@@ -27,8 +26,8 @@ Last verified: `2026-07-18`
 | `shop-payment` | Payment domain service | no | `test-shop/apps/shop-payment` |
 | Infra | Kafka 4.3.1 KRaft, PostgreSQL 16.8, Helm chart | no | `test-shop/deploy/helm/test-shop` |
 
-`test-shop` consumes the framework through packed `.tgz` artifacts staged in
-`test-shop/.framework/`; it does not import neighbouring framework source.
+`test-shop` consumes exact public registry versions `0.1.0` and does not import
+neighbouring framework source.
 
 ## Accepted baseline
 
@@ -36,8 +35,8 @@ Last verified: `2026-07-18`
 - Runtime-accepted source commit:
   `6956299de7da03d8074530f0856339e0915c8146`.
 - Exact application image content tag: `sha-d3eb3338ca20f71f`.
-- Tarballs were regenerated, staged in both package locations, and verified by
-  package and consumer smoke tests.
+- Published tarball integrities match the release artifacts and the registry
+  URLs/integrities pinned by the consumer lockfile.
 - Baseline inventory: `scam/WORKSPACE_BASELINE.json`.
 
 ## Standard commands
@@ -60,8 +59,8 @@ Last verified: `2026-07-18`
   logical exactly-once domain effect; physical exactly-once is not claimed.
 - This milestone keeps Apache Kafka KRaft, the canonical DSL/state model, and
   package boundaries intact.
-- Package manifests and lockfiles currently carry `Apache-2.0`. Confirmation of
-  the license-owner decision is still required immediately before npm publish.
+- Package manifests, lockfiles, and registry metadata carry `Apache-2.0`. The
+  user directly confirmed the license-owner decision before publication.
 
 ## Verified state
 
@@ -72,6 +71,8 @@ Last verified: `2026-07-18`
 - Kubernetes resilience: `8/8` passed, including real Kafka StatefulSet and
   PostgreSQL StatefulSet outages.
 - Live PostgreSQL SPI: `6/6` passed; live Kafka SPI: `2/2` passed.
+- Anonymous registry install/import: passed in Node 22.
+- Registry-backed Helm revision 34 and repeated business gate: `16/16` passed.
 - Kubernetes remains running in namespace `processengine-test-shop`; Compose is
   stopped with volumes retained.
 
@@ -82,20 +83,20 @@ Primary evidence directories:
 - `test-shop/.artifacts/k8s/2026-07-18T19-15-23.099Z-business-pass/`
 - `test-shop/.artifacts/k8s/2026-07-18T19-19-07.805Z-resilience-pass/`
 - `test-shop/.artifacts/k8s/2026-07-18T19-19-52.3NZ-live-conformance-pass/`
+- `test-shop/.artifacts/k8s/2026-07-18T20-55-36.992Z-deploy-pass/`
+- `test-shop/.artifacts/k8s/2026-07-18T20-59-27.257Z-business-pass/`
 
-## Known constraints and publication risks
+## Known constraints
 
 - The host shell uses Node `20.19`; package engines require Node >=22. App and
   live conformance execution used Node `22.13.0` containers. The host's
   `EBADENGINE` warning did not change manifests or lockfiles.
-- npm authentication, ownership of the `@processengine` scope, and availability
-  of version `0.1.0` remain external publication gates until checked.
-- If registry publication succeeds, `test-shop` must be switched to registry
-  versions and re-smoked before tag `v0.1.0` is created.
+- The project publication credential is stored as GitHub Actions secret
+  `NPM_TOKEN`; it is not stored in the repository.
 
 ## Active task and next result
 
 - Task Contract: `scam/TASK.md`.
 - Work record: `scam/work-records/PE-M1.md`.
-- Next result: npm authentication/scope/version preflight. npm publish itself
-  waits for the recorded license-owner confirmation.
+- Next result: push and read back the post-publication release commit, then
+  create and verify annotated tag `v0.1.0`.

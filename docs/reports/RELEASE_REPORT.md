@@ -5,7 +5,8 @@
 - **Runtime-accepted commit**: `6956299de7da03d8074530f0856339e0915c8146`
 - **Runtime image tag**: `sha-d3eb3338ca20f71f`
 - **Package metadata license**: Apache-2.0
-- **Release state**: local acceptance PASS; GitHub source published; npm pending
+- **Release state**: acceptance PASS; GitHub source and npm packages published;
+  release tag pending
 
 ## 1. Acceptance summary
 
@@ -17,6 +18,9 @@
 | Kubernetes business 16/16 | PASS, exit 0 | `test-shop/.artifacts/k8s/2026-07-18T19-15-23.099Z-business-pass/` |
 | Kubernetes resilience 8/8 | PASS, exit 0 | `test-shop/.artifacts/k8s/2026-07-18T19-19-07.805Z-resilience-pass/` |
 | PostgreSQL/Kafka live SPI | PASS, exits 0; 6/6 and 2/2 | `test-shop/.artifacts/k8s/2026-07-18T19-19-52.3NZ-live-conformance-pass/` |
+| anonymous npm install/import | PASS in clean Node 22 container | public npm registry |
+| registry-backed deploy/image identity | PASS, Helm revision 34 | `test-shop/.artifacts/k8s/2026-07-18T20-55-36.992Z-deploy-pass/` |
+| registry-backed Kubernetes business 16/16 | PASS, exit 0 | `test-shop/.artifacts/k8s/2026-07-18T20-59-27.257Z-business-pass/` |
 
 Full runtime detail is in `docs/reports/K8S_ACCEPTANCE_REPORT.md`.
 
@@ -28,8 +32,8 @@ Full runtime detail is in `docs/reports/K8S_ACCEPTANCE_REPORT.md`.
 - Initial accepted source-and-reports commit:
   `8968afb41a7303c86a8f2a734561f2cb82ed7fb4`; local `main`, `ls-remote`, and
   the GitHub commits API returned the same SHA after publication.
-- Annotated tag `v0.1.0`: **NOT CREATED**. It may be created only after all
-  three npm packages publish and pass registry-install verification.
+- Annotated tag `v0.1.0`: **PENDING** until the post-publication consumer and
+  report commit is pushed and read back from GitHub.
 
 The repository excludes `node_modules`, `dist`, generated tarballs/caches,
 `.artifacts`, `.claude`, `.env`, `.npmrc`, kubeconfig, tokens and Kubernetes
@@ -41,28 +45,38 @@ Target registry: `https://registry.npmjs.org`, public access. Required order:
 
 | Order | Package | Version | Current status |
 | --- | --- | --- | --- |
-| 1 | `@processengine/conductor` | 0.1.0 | READY; NOT PUBLISHED |
-| 2 | `@processengine/transport-kafka` | 0.1.0 | READY; NOT PUBLISHED |
-| 3 | `@processengine/storage-postgres` | 0.1.0 | READY; NOT PUBLISHED |
+| 1 | `@processengine/conductor` | 0.1.0 | PUBLISHED; PUBLIC READ VERIFIED |
+| 2 | `@processengine/transport-kafka` | 0.1.0 | PUBLISHED; PUBLIC READ VERIFIED |
+| 3 | `@processengine/storage-postgres` | 0.1.0 | PUBLISHED; PUBLIC READ VERIFIED |
 
 `test-shop` is not an npm publication target.
 
-Local pre-publication checks completed:
+Publication verification completed:
 
 - versions and dependency ranges are internally consistent;
 - current manifests and lockfiles contain Apache-2.0 rather than `UNLICENSED`;
 - all three tarballs contain LICENSE and only intended package files;
-- clean tarball install/public-import smoke passed;
+- anonymous clean registry install/public-import smoke passed in Node 22;
 - deterministic, live SPI and contour gates passed.
+- registry metadata reports `0.1.0`, `Apache-2.0`, and the same SHA-512
+  integrity values recorded by the release tarballs and consumer lockfile;
+- `test-shop` now pins registry version `0.1.0` for all three packages and has
+  no `.framework` dependency or staging step;
+- registry-backed image `sha-d923f6427af27545` passed Helm revision 34 and the
+  repeated Kubernetes business gate `16/16`.
 
-Owner confirmation of the Apache-2.0 licensing decision has not yet been
-recorded in this task. Per the recovery instruction, that confirmation is
-requested only immediately before `npm publish`. Registry auth/scope/version
-availability and any 2FA prompt are also publication-time gates. No version bump
-will be inferred if 0.1.0 is unavailable.
+The user directly confirmed the Apache-2.0 license-owner decision in this task
+immediately before publication. The npm account had owner access to the
+`@processengine` scope. The user-provided project publication token was stored
+as the GitHub Actions secret `NPM_TOKEN` and used without writing it into the
+workspace.
 
-Post-publication registry install, conversion of test-shop from local tarballs,
-key live checkout, and `v0.1.0` tagging remain **NOT PERFORMED**.
+Post-publication deploy evidence:
+
+- `test-shop/.artifacts/k8s/2026-07-18T20-55-36.992Z-deploy-pass/`;
+- `test-shop/.artifacts/k8s/2026-07-18T20-59-27.257Z-business-pass/`.
+
+Only annotated tag `v0.1.0` remains pending in this report revision.
 
 ## 4. Fixes included
 

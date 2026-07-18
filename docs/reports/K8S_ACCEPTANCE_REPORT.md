@@ -8,7 +8,8 @@
 - **Namespace / Helm release**: `processengine-test-shop` / `test-shop`
 
 Documentation commits made after the runtime gates do not enter the Docker build
-input set and therefore do not change this content tag.
+input set and therefore do not change this content tag. A separate
+post-publication deployment is recorded in section 3.5.
 
 ## 1. Environment and deployed contour
 
@@ -121,6 +122,23 @@ was deleted afterward.
 
 Evidence:
 `test-shop/.artifacts/k8s/2026-07-18T19-19-52.3NZ-live-conformance-pass/`.
+
+### 3.5 Published-package consumer smoke — PASS
+
+After public registry verification, `test-shop` was changed from local tarball
+references to exact registry versions `0.1.0`. Commit
+`c6d6fcab49f52184c0349a6b7f07bd1dcd144f27` produced image content tag
+`sha-d923f6427af27545`.
+
+- anonymous Node 22 clean install and imports: PASS;
+- test-shop deterministic gate: PASS, `42/42`;
+- Helm revision 34: all six application pods Ready on the exact new tag;
+- repeated Kubernetes business acceptance: PASS, `16/16`.
+
+Evidence:
+
+- deploy: `test-shop/.artifacts/k8s/2026-07-18T20-55-36.992Z-deploy-pass/`;
+- business: `test-shop/.artifacts/k8s/2026-07-18T20-59-27.257Z-business-pass/`.
 
 ## 4. Defects found and fixed
 

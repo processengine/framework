@@ -6,7 +6,9 @@
 - `@processengine/transport-kafka` — Kafka transport adapter;
 - `@processengine/storage-postgres` — PostgreSQL persistence adapter.
 
-It deliberately does not import framework source files and does not define a preset package. The local tarballs in `.framework/` are the same package boundary an independently versioned host would consume from a registry.
+It deliberately does not import framework source files and does not define a
+preset package. Its root manifest and lockfile pin the three public registry
+packages at `0.1.0`, including their registry URLs and integrity digests.
 
 The contour contains exactly three applications: `shop-host`, `shop-warehouse`, and `shop-payment`. `shop-host` is the composition root; the other two are deliberately ordinary, idempotent domain services communicating only through operation messages.
 
@@ -28,14 +30,12 @@ deploy/helm/test-shop/       Docker Desktop Kubernetes contour
 scripts/                     repeatable build, acceptance and evidence gates
 ```
 
-## Local framework gate
+## Published framework gate
 
-From the bundle root, pack the framework first. Then stage and verify it as a consumer:
+Install and verify the consumer against the public npm registry:
 
 ```bash
-npm run pack:all --prefix processengine
 cd test-shop
-npm run framework:stage
 npm ci
 npm run check
 ```

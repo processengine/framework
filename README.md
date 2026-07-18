@@ -7,8 +7,9 @@ This bundle contains two deliberately separate consumers:
 - `test-shop/` — an external e-commerce contour with `shop-host`,
   `shop-warehouse` and `shop-payment`.
 
-The shop installs packed framework tarballs. A successful contour therefore
-checks the same public package boundary that a real host service uses.
+The shop installs the exact public framework versions from the npm registry. A
+successful contour therefore checks the same package boundary that an
+independently deployed host service uses.
 
 ## First run
 
@@ -40,12 +41,10 @@ pod restarts and rolling upgrades; namespace deletion removes the contour PVCs.
 ## Daily development loop
 
 ```bash
-# after framework changes
-npm run pack
-npm --prefix test-shop install
+# validate framework and the published consumer dependency boundary
+npm run check
 
 # validate and upgrade the running contour
-npm run check
 npm run k8s:deploy
 npm run k8s:test
 ```

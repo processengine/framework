@@ -1,15 +1,17 @@
 # Definition of done
 
 The contour is accepted by executable oracles at deterministic/package,
-business, resilience, and live-SPI levels. The runtime-accepted source commit is
-`6956299de7da03d8074530f0856339e0915c8146`; its exact image content tag is
-`sha-d3eb3338ca20f71f`.
+business, resilience, and live-SPI levels. The resilience-accepted source commit
+is `6956299de7da03d8074530f0856339e0915c8146`; its exact image content tag is
+`sha-d3eb3338ca20f71f`. The post-publication consumer commit is
+`c6d6fcab49f52184c0349a6b7f07bd1dcd144f27`; its registry-backed image tag is
+`sha-d923f6427af27545`.
 
 ## Packaged and deterministic gate
 
 | Requirement | Oracle | Verified result |
 | --- | --- | --- |
-| Host consumes only the three public ProcessEngine packages | tarball install and import/package smoke | PASS |
+| Host consumes only the three public ProcessEngine packages | registry lock, clean install, and public-import smoke | PASS |
 | App inventory is `shop-host`, `shop-warehouse`, `shop-payment` | workspace, image, and Helm inventory tests | PASS |
 | Explicit immutable flow v1 and v2 compile | public compiler/registry contract tests | PASS |
 | Every one of the 16 v1 terminal steps is reachable | checkout terminal transition matrix | PASS |
@@ -40,6 +42,8 @@ Evidence:
   `test-shop/.artifacts/k8s/2026-07-18T19-22-15.3NZ-local-gates-pass/`.
 - Kubernetes business gate:
   `test-shop/.artifacts/k8s/2026-07-18T19-15-23.099Z-business-pass/`.
+- Post-publication registry-backed Kubernetes business gate:
+  `test-shop/.artifacts/k8s/2026-07-18T20-59-27.257Z-business-pass/`.
 
 ## Live Kubernetes resilience gate
 
@@ -79,6 +83,9 @@ listener and PostgreSQL secret. The pod was removed after the run. Evidence:
   edits do not change it, while application/config changes do.
 - Every application Deployment and every Ready application pod used the exact
   repository/tag asserted by the deploy gate.
+- After npm publication, Helm revision 34 ran all six application pods from
+  `sha-d923f6427af27545`; its Docker build installed the registry lockfile and
+  the repeated business gate passed `16/16`.
 - Kubernetes context `docker-desktop`, namespace `processengine-test-shop`, and
   Helm release `test-shop` remain running.
 - Compose is stopped with its volumes retained.
