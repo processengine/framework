@@ -43,6 +43,7 @@ import { createPostgresStorage, runPostgresMigrations } from '@processengine/sto
 const storage = createPostgresStorage({
   connectionString: process.env.DATABASE_URL!,
   schema: 'processengine',
+  connectionTimeoutMs: 5_000,
   onPoolError: (error) => logger.error({ error }, 'idle PostgreSQL client failed')
 });
 
@@ -56,6 +57,12 @@ without a listener Node.js treats the event as unhandled and exits. The optional
 `onPoolError` callback integrates those events with application logging. Its
 default writes the error to `console.error`; operation calls still reject
 normally while PostgreSQL is unavailable and can recover through the pool.
+
+For pools created by the adapter, `connectionTimeoutMs` bounds how long an
+operation may wait while opening a new connection. Its default is 5 seconds, so
+polling workers can retry promptly after an outage instead of inheriting the
+operating system's much longer TCP timeout. A caller-supplied `pool` controls
+its own connection timeout.
 
 Applications that run with a least-privilege runtime role should execute
 `runPostgresMigrations()` from a separate deployment job. Runtime startup does

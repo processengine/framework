@@ -24,6 +24,8 @@ export interface PostgresStorageOptions {
   readonly schema?: string;
   readonly maxConnections?: number;
   readonly applicationName?: string;
+  /** Upper bound for opening a new pooled connection. Defaults to 5 seconds. */
+  readonly connectionTimeoutMs?: number;
   readonly ssl?: pg.PoolConfig['ssl'];
   readonly migrationMode?: 'validate' | 'apply';
   /** Observes errors emitted by idle pooled clients. The adapter always installs a listener so outages do not terminate Node.js. */
@@ -53,6 +55,10 @@ export class PostgresStorage implements ProcessStorage {
     if (!options.pool && !options.connectionString) {
       throw new TypeError('PostgreSQL connectionString or pool is required');
     }
+    if (options.connectionTimeoutMs !== undefined
+      && (!Number.isSafeInteger(options.connectionTimeoutMs) || options.connectionTimeoutMs <= 0)) {
+      throw new TypeError('connectionTimeoutMs must be a positive integer');
+    }
     this.schema = options.schema ?? 'processengine';
     assertPostgresSchemaName(this.schema);
     this.migrationMode = options.migrationMode ?? 'validate';
@@ -61,6 +67,7 @@ export class PostgresStorage implements ProcessStorage {
       connectionString: options.connectionString,
       max: options.maxConnections ?? 10,
       application_name: options.applicationName ?? 'processengine-storage',
+      connectionTimeoutMillis: options.connectionTimeoutMs ?? 5_000,
       ...(options.ssl === undefined ? {} : { ssl: options.ssl }),
     });
     this.poolErrorHandler = options.onPoolError ?? ((error) => {

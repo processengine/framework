@@ -14,6 +14,7 @@ import {
   type OperationServiceOptions,
 } from './types.js';
 import { randomUUID } from 'node:crypto';
+import { ClaimRecoveryQueue } from './claim-recovery.js';
 
 export class PostgresKafkaOperationService {
   readonly pool: Pool;
@@ -23,11 +24,19 @@ export class PostgresKafkaOperationService {
   private relayTimer: NodeJS.Timeout | undefined;
   private relayActive = false;
   private started = false;
+  private readonly claimRecovery = new ClaimRecoveryQueue();
   private readonly poolErrorHandler: (error: Error) => void;
   private readonly serviceInstanceId = `${globalThis.process.env.HOSTNAME ?? 'local'}:${randomUUID()}`;
 
   constructor(private readonly options: OperationServiceOptions) {
-    this.pool = new Pool({ connectionString: options.databaseUrl });
+    if (options.postgresConnectionTimeoutMs !== undefined
+      && (!Number.isSafeInteger(options.postgresConnectionTimeoutMs) || options.postgresConnectionTimeoutMs <= 0)) {
+      throw new TypeError('postgresConnectionTimeoutMs must be a positive integer');
+    }
+    this.pool = new Pool({
+      connectionString: options.databaseUrl,
+      connectionTimeoutMillis: options.postgresConnectionTimeoutMs ?? 5_000,
+    });
     this.poolErrorHandler = options.onPoolError ?? ((error) => {
       console.error(`[${options.serviceName}] idle PostgreSQL client failed`, error);
     });
@@ -164,10 +173,15 @@ export class PostgresKafkaOperationService {
     if (!this.started || this.relayActive) return;
     this.relayActive = true;
     try {
+      await this.flushClaimRecovery();
       // The lease is deliberately longer than the bounded Kafka publish
       // attempt configured above, preventing concurrent reclaim while a
       // healthy owner is still waiting for the broker.
       const messages = await this.ledger.claim(20, 60_000);
+      // Register the full batch before processing it. If PostgreSQL disappears
+      // after the claim, the still-running service can release every fenced
+      // claim as soon as the pool recovers instead of waiting for lease expiry.
+      this.claimRecovery.track(messages);
       for (const message of messages) {
         try {
           const decision = await this.options.beforePublish?.({ envelope: message.envelope, pool: this.pool });
@@ -178,12 +192,16 @@ export class PostgresKafkaOperationService {
               message.claimVersion,
               decision.retryAfterMs,
             );
+            this.claimRecovery.complete(message.messageId);
             continue;
           }
           await this.transport.publish(message.envelope);
           await this.ledger.markPublished(message.messageId, message.owner, message.claimVersion);
-        } catch {
-          await this.ledger.reschedule(message.messageId, message.owner, message.claimVersion, 1_000);
+          this.claimRecovery.complete(message.messageId);
+        } catch (error) {
+          this.claimRecovery.retryAfter(message.messageId, 1_000);
+          await this.flushClaimRecovery();
+          throw error;
         }
       }
     } catch (error) {
@@ -192,6 +210,15 @@ export class PostgresKafkaOperationService {
       this.relayActive = false;
       this.scheduleRelay(this.options.outboxPollMs ?? 250);
     }
+  }
+
+  private flushClaimRecovery(): Promise<void> {
+    return this.claimRecovery.flush((claim, retryAfterMs) => this.ledger.reschedule(
+      claim.messageId,
+      claim.owner,
+      claim.claimVersion,
+      retryAfterMs,
+    ));
   }
 }
 

@@ -61,6 +61,7 @@ export interface OperationServiceOptions {
     event: OperationBeforePublishEvent,
   ) => Promise<OperationPublishDecision> | OperationPublishDecision;
   readonly onPoolError?: (error: Error) => void;
+  readonly postgresConnectionTimeoutMs?: number;
   readonly outboxPollMs?: number;
 }
 

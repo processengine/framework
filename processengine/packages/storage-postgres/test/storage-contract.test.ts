@@ -8,6 +8,22 @@ import { createPostgresStorage } from '../src/storage.js';
 const NOW = '2026-01-01T00:00:00.000Z';
 
 describe('PostgresStorage SQL contract', () => {
+  it('bounds new pooled connection attempts by default and accepts an override', async () => {
+    const defaultStorage = createPostgresStorage({ connectionString: 'postgres://localhost/processengine' });
+    const overriddenStorage = createPostgresStorage({
+      connectionString: 'postgres://localhost/processengine',
+      connectionTimeoutMs: 2_500,
+    });
+
+    expect(defaultStorage.connectionProvider().options.connectionTimeoutMillis).toBe(5_000);
+    expect(overriddenStorage.connectionProvider().options.connectionTimeoutMillis).toBe(2_500);
+    expect(() => createPostgresStorage({
+      connectionString: 'postgres://localhost/processengine',
+      connectionTimeoutMs: 0,
+    })).toThrow('connectionTimeoutMs must be a positive integer');
+    await Promise.all([defaultStorage.close(), overriddenStorage.close()]);
+  });
+
   it('observes idle client errors so a PostgreSQL outage is not an unhandled event', async () => {
     const fake = new FakePool();
     const onPoolError = vi.fn();
