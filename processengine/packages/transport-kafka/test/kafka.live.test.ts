@@ -37,25 +37,32 @@ describeLive('Kafka transport live conformance', () => {
     const receiver = createKafkaTransport({ clientId: `pe-receiver-${suffix}`, brokers });
     const adminKafka = new Kafka({ clientId: `pe-cleanup-${suffix}`, brokers, logLevel: logLevel.NOTHING });
     const admin = adminKafka.admin();
+    let unsubscribe: (() => Promise<void>) | undefined;
+    let receiveTimer: ReturnType<typeof setTimeout> | undefined;
     await sender.start();
     await receiver.start();
     await admin.connect();
     try {
       await sender.ensureTopics([{ topic, numPartitions: 1, replicationFactor: 1 }]);
+      let resolveReceived!: (message: MessageEnvelope) => void;
+      let rejectReceived!: (error: Error) => void;
       const received = new Promise<MessageEnvelope>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('Timed out waiting for Kafka message')), 20_000);
-        void receiver.subscribe({
-          destination: topic,
-          consumerGroup: `pe-conformance-${suffix}`,
-          handler: async (message) => {
-            clearTimeout(timer);
-            resolve(message);
-          },
-        }).catch((error: unknown) => {
-          clearTimeout(timer);
-          reject(error);
-        });
+        resolveReceived = resolve;
+        rejectReceived = reject;
       });
+      unsubscribe = await receiver.subscribe({
+        destination: topic,
+        consumerGroup: `pe-conformance-${suffix}`,
+        handler: async (message) => {
+          if (receiveTimer) clearTimeout(receiveTimer);
+          resolveReceived(message);
+        },
+      });
+      // KafkaJS returns from consumer.run() before group assignment has fully
+      // settled. Publishing immediately can place the record before the new
+      // group's initial latest offset when fromBeginning is disabled.
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      receiveTimer = setTimeout(() => rejectReceived(new Error('Timed out waiting for Kafka message')), 20_000);
       const envelope = operationCompletionEnvelope({
         source: 'conformance-worker',
         destination: topic,
@@ -66,6 +73,8 @@ describeLive('Kafka transport live conformance', () => {
       await sender.publish(envelope);
       await expect(received).resolves.toEqual(envelope);
     } finally {
+      if (receiveTimer) clearTimeout(receiveTimer);
+      await unsubscribe?.();
       await Promise.allSettled([sender.stop(), receiver.stop()]);
       await admin.deleteTopics({ topics: [topic], timeout: 10_000 }).catch(() => undefined);
       await admin.disconnect();
