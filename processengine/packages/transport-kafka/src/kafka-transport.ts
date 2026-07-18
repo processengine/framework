@@ -29,11 +29,13 @@ export interface KafkaTransportOptions {
   readonly sasl?: KafkaConfig['sasl'];
   readonly connectionTimeoutMs?: number;
   readonly requestTimeoutMs?: number;
-  // Hard upper bound on a single publish() call. KafkaJS producer.send() can
-  // otherwise block far longer than connection/request timeouts when a broker is
-  // unreachable (the connection is silently dropped rather than refused), which
-  // stalls durable outbox draining. When exceeded, publish() rejects so the
-  // Conductor reschedules the record. Must stay below the outbox lease.
+  /**
+   * Upper bound on one caller's wait for publish(). The default is 15 seconds.
+   * A timeout after producer.send() begins has an unknown delivery result: the
+   * send is not cancellable, remains the only local in-flight send, and a retry
+   * with the same messageId joins or consumes its late result. Keep this below
+   * the durable outbox lease.
+   */
   readonly publishTimeoutMs?: number;
   readonly retry?: KafkaConfig['retry'];
   readonly logLevel?: logLevel;
@@ -58,6 +60,16 @@ export interface KafkaTopicDefinition {
   readonly replicationFactor?: number;
 }
 
+interface ActivePublish {
+  readonly messageId: string;
+  readonly serialized: string;
+  readonly execution: Promise<void>;
+  readonly generation: number;
+  uncertain: boolean;
+}
+
+export type KafkaPublishDeliveryStatus = 'unknown' | 'not-attempted';
+
 export class KafkaTransport implements MessageTransport {
   private readonly kafka: Kafka;
   private readonly producer: Producer;
@@ -66,6 +78,10 @@ export class KafkaTransport implements MessageTransport {
   private lifecycleTail: Promise<void> = Promise.resolve();
   private started = false;
   private readonly publishTimeoutMs: number;
+  private activePublish: ActivePublish | undefined;
+  private readonly lateSuccesses = new Map<string, string>();
+  private readonly publishWaiters = new Set<(error: Error) => void>();
+  private publishGeneration = 0;
 
   constructor(private readonly options: KafkaTransportOptions) {
     if (options.clientId.trim().length === 0) throw new TypeError('Kafka clientId is required');
@@ -128,6 +144,12 @@ export class KafkaTransport implements MessageTransport {
 
   stop(): Promise<void> {
     return this.withLifecycle(async () => {
+      const wasStarted = this.started;
+      this.started = false;
+      this.publishGeneration += 1;
+      this.activePublish = undefined;
+      this.lateSuccesses.clear();
+      this.abortPublishWaiters(new KafkaTransportStoppedError());
       const consumers = [...this.consumers.entries()];
       this.consumers.clear();
       for (const [, state] of consumers) state.active = false;
@@ -135,45 +157,66 @@ export class KafkaTransport implements MessageTransport {
         await consumer.stop();
         await consumer.disconnect();
       }));
-      if (this.started) {
+      if (wasStarted) {
         await Promise.allSettled([this.admin.disconnect(), this.producer.disconnect()]);
       }
-      this.started = false;
     });
   }
 
   async publish(message: MessageEnvelope): Promise<void> {
     this.assertStarted();
-    const send = this.producer.send({
-      topic: message.destination,
-      acks: -1,
-      messages: [{
-        key: message.partitionKey,
-        value: JSON.stringify(message),
-        headers: {
-          'message-id': message.messageId,
-          'message-type': message.type,
-          'protocol-version': message.protocolVersion,
-        },
-      }],
-    });
-    // Bound the call so an unreachable broker rejects promptly instead of
-    // blocking; a rejected publish is a durable retry owned by the Conductor.
-    // The abandoned send is idempotent (stable messageId) and deduplicated
-    // downstream if it later lands.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        send.then(() => undefined),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error(`Kafka publish exceeded ${this.publishTimeoutMs}ms for ${message.messageId}`)),
-            this.publishTimeoutMs,
-          );
-        }),
-      ]);
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
+    const serialized = JSON.stringify(message);
+    const deadline = Date.now() + this.publishTimeoutMs;
+
+    while (true) {
+      this.assertStarted();
+      const lateSuccess = this.lateSuccesses.get(message.messageId);
+      if (lateSuccess !== undefined) {
+        this.assertSameMessage(message.messageId, lateSuccess, serialized);
+        this.lateSuccesses.delete(message.messageId);
+        return;
+      }
+
+      const active = this.activePublish;
+      if (active === undefined) {
+        const started = this.beginPublish(message, serialized);
+        try {
+          await this.waitUntil(started.execution, deadline, () => {
+            started.uncertain = true;
+            return new KafkaPublishTimeoutError(message.messageId, this.publishTimeoutMs, 'unknown');
+          });
+          this.lateSuccesses.delete(message.messageId);
+          return;
+        } catch (error) {
+          if (error instanceof KafkaPublishTimeoutError) started.uncertain = true;
+          throw error;
+        }
+      }
+
+      if (active.messageId === message.messageId) {
+        this.assertSameMessage(message.messageId, active.serialized, serialized);
+        try {
+          await this.waitUntil(active.execution, deadline, () => {
+            active.uncertain = true;
+            return new KafkaPublishTimeoutError(message.messageId, this.publishTimeoutMs, 'unknown');
+          });
+          this.lateSuccesses.delete(message.messageId);
+          return;
+        } catch (error) {
+          if (error instanceof KafkaPublishTimeoutError) {
+            active.uncertain = true;
+            throw error;
+          }
+          if (this.activePublish !== active) continue;
+          throw error;
+        }
+      }
+
+      await this.waitUntil(
+        active.execution.then(() => undefined, () => undefined),
+        deadline,
+        () => new KafkaPublishTimeoutError(message.messageId, this.publishTimeoutMs, 'not-attempted'),
+      );
     }
   }
 
@@ -296,6 +339,83 @@ export class KafkaTransport implements MessageTransport {
     if (!this.started) throw new Error('Kafka transport is not started');
   }
 
+  private beginPublish(message: MessageEnvelope, serialized: string): ActivePublish {
+    const generation = this.publishGeneration;
+    const execution = Promise.resolve().then(() => this.producer.send({
+      topic: message.destination,
+      acks: -1,
+      messages: [{
+        key: message.partitionKey,
+        value: serialized,
+        headers: {
+          'message-id': message.messageId,
+          'message-type': message.type,
+          'protocol-version': message.protocolVersion,
+        },
+      }],
+    })).then(() => undefined);
+    const active: ActivePublish = {
+      messageId: message.messageId,
+      serialized,
+      execution,
+      generation,
+      uncertain: false,
+    };
+    this.activePublish = active;
+    void execution.then(() => {
+      if (active.uncertain && active.generation === this.publishGeneration && this.started) {
+        this.rememberLateSuccess(active.messageId, active.serialized);
+      }
+      if (this.activePublish === active) this.activePublish = undefined;
+    }, () => {
+      if (this.activePublish === active) this.activePublish = undefined;
+    });
+    return active;
+  }
+
+  private waitUntil<T>(
+    execution: Promise<T>,
+    deadline: number,
+    timeoutError: () => Error,
+  ): Promise<T> {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) return Promise.reject(timeoutError());
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+      const finish = (action: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.publishWaiters.delete(abort);
+        action();
+      };
+      const abort = (error: Error) => finish(() => reject(error));
+      const timer = setTimeout(() => finish(() => reject(timeoutError())), remainingMs);
+      this.publishWaiters.add(abort);
+      void execution.then(
+        (value) => finish(() => resolve(value)),
+        (error: unknown) => finish(() => reject(error)),
+      );
+    });
+  }
+
+  private abortPublishWaiters(error: Error): void {
+    for (const abort of [...this.publishWaiters]) abort(error);
+  }
+
+  private assertSameMessage(messageId: string, expected: string, actual: string): void {
+    if (expected !== actual) throw new KafkaPublishIdentityConflictError(messageId);
+  }
+
+  private rememberLateSuccess(messageId: string, serialized: string): void {
+    this.lateSuccesses.delete(messageId);
+    this.lateSuccesses.set(messageId, serialized);
+    if (this.lateSuccesses.size > 1_024) {
+      const oldest = this.lateSuccesses.keys().next().value as string | undefined;
+      if (oldest !== undefined) this.lateSuccesses.delete(oldest);
+    }
+  }
+
   private withLifecycle<T>(action: () => Promise<T>): Promise<T> {
     const execution = this.lifecycleTail.then(action, action);
     this.lifecycleTail = execution.then(() => undefined, () => undefined);
@@ -309,6 +429,37 @@ export class InvalidKafkaMessageError extends Error {
   constructor(readonly invalidMessage: InvalidKafkaMessage) {
     super(invalidMessage.reason);
     this.name = 'InvalidKafkaMessageError';
+  }
+}
+
+export class KafkaPublishTimeoutError extends Error {
+  readonly code = 'KAFKA_PUBLISH_TIMEOUT';
+
+  constructor(
+    readonly messageId: string,
+    readonly timeoutMs: number,
+    readonly deliveryStatus: KafkaPublishDeliveryStatus,
+  ) {
+    super(`Kafka publish exceeded ${timeoutMs}ms for ${messageId}; delivery is ${deliveryStatus}`);
+    this.name = 'KafkaPublishTimeoutError';
+  }
+}
+
+export class KafkaPublishIdentityConflictError extends Error {
+  readonly code = 'KAFKA_PUBLISH_IDENTITY_CONFLICT';
+
+  constructor(readonly messageId: string) {
+    super(`Kafka messageId ${messageId} was reused with different content`);
+    this.name = 'KafkaPublishIdentityConflictError';
+  }
+}
+
+export class KafkaTransportStoppedError extends Error {
+  readonly code = 'KAFKA_TRANSPORT_STOPPED';
+
+  constructor() {
+    super('Kafka transport stopped while publish was pending');
+    this.name = 'KafkaTransportStoppedError';
   }
 }
 

@@ -1,7 +1,13 @@
 import { createOperationService } from '@test-shop/service-kit';
 import { DEMO_FIXTURES, OPERATIONS, parseAuthorizePaymentInput, type JsonValue } from '@test-shop/contracts';
 import type { PaymentConfig } from './config.js';
-import { markDuplicatePublication, markPaymentDelivery, migratePayment, paymentHandlers } from './payment.js';
+import {
+  markDuplicatePublication,
+  markPaymentDelivery,
+  migratePayment,
+  paymentCompletionPublishDecision,
+  paymentHandlers,
+} from './payment.js';
 
 export function createPaymentService(config: PaymentConfig) {
   const service = createOperationService({
@@ -15,7 +21,7 @@ export function createPaymentService(config: PaymentConfig) {
       commandTopic: config.commandTopic,
       consumerGroup: config.consumerGroup,
     },
-    handlers: paymentHandlers({ demoFaults: config.demoFaults, delayedResponseMs: config.delayedResponseMs }),
+    handlers: paymentHandlers({ demoFaults: config.demoFaults }),
     migrateDomain: migratePayment,
     outboxPollMs: config.outboxPollMs,
     beforeAccept: async ({ command, serviceInstanceId, pool }) => {
@@ -23,6 +29,10 @@ export function createPaymentService(config: PaymentConfig) {
       const input = parseAuthorizePaymentInput(command.input as JsonValue);
       await markPaymentDelivery(pool, input.checkoutId, serviceInstanceId);
     },
+    beforePublish: ({ envelope, pool }) => paymentCompletionPublishDecision(pool, envelope, {
+      demoFaults: config.demoFaults,
+      delayedResponseMs: config.delayedResponseMs,
+    }),
     afterCommit: async ({ command, created }) => {
       if (!created || !config.demoFaults || command.operation !== OPERATIONS.authorizePayment) return;
       const input = parseAuthorizePaymentInput(command.input as JsonValue);

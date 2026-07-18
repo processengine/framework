@@ -64,9 +64,6 @@ export async function createShopConductor(options: ShopConductorOptions): Promis
     requestTimeoutMs: 10_000,
     retry: { retries: 2, initialRetryTime: 250, maxRetryTime: 1_000 },
     invalidMessage: { strategy: 'throw' },
-    // Fast group-membership turnover so completion-consumer rebalances during a
-    // rolling update finish in seconds (see service-kit for rationale).
-    consumer: { sessionTimeout: 6_000, heartbeatInterval: 2_000, rebalanceTimeout: 12_000 },
   });
   const conductor = new Conductor({
     source: options.source,

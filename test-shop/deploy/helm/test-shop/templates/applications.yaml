@@ -65,6 +65,7 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ include "test-shop.fullname" $root }}-database, key: DATABASE_URL } }
             {{- if eq $app.name "shop-host" }}
             - { name: KAFKA_CONSUMER_GROUP, value: test-shop-shop-host-v1 }
+            - { name: FLOW_ACTIVE_VERSION, value: {{ $root.Values.flow.activeVersion | quote }} }
             - { name: FLOW_FILES, value: "/app/test-shop/flows/shop.checkout.v1.json,/app/test-shop/flows/shop.checkout.v2.json" }
             - { name: OPERATIONS_FILE, value: /app/test-shop/config/operations.json }
             {{- else if eq $app.name "shop-warehouse" }}

@@ -61,10 +61,4 @@ probes:
   startup: { failureThreshold: 60, periodSeconds: 2, timeoutSeconds: 1 }
   readiness: { failureThreshold: 5, periodSeconds: 2, timeoutSeconds: 1 }
   liveness: { failureThreshold: 3, periodSeconds: 10, timeoutSeconds: 1 }
-# Kept short so a pod whose operation handler is deliberately blocked (e.g. the
-# rolling-update barrier holding payment.authorize) terminates promptly during a
-# rollout instead of lingering to the grace deadline. Abrupt termination is safe
-# by design: domain commits are atomic, delivery is at-least-once and processing
-# is idempotent with lease fencing, so a killed in-flight handler is redelivered
-# and replayed without a duplicate effect.
-terminationGracePeriodSeconds: 5
+terminationGracePeriodSeconds: 20

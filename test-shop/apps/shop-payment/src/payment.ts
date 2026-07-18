@@ -7,7 +7,16 @@ import {
   parseConfirmPaymentInput,
   type JsonValue,
 } from '@test-shop/contracts';
-import { failure, noResponse, result, type OperationHandler } from '@test-shop/service-kit';
+import {
+  deferOperationCompletion,
+  failure,
+  noResponse,
+  publishOperationCompletion,
+  result,
+  type MessageEnvelope,
+  type OperationHandler,
+  type OperationPublishDecision,
+} from '@test-shop/service-kit';
 import type { Pool, PoolClient } from 'pg';
 
 export interface PaymentRow {
@@ -70,14 +79,12 @@ export async function migratePayment(pool: Pool): Promise<void> {
 
 export function paymentHandlers(options: {
   readonly demoFaults: boolean;
-  readonly delayedResponseMs: number;
 }): Readonly<Record<string, OperationHandler>> {
   return {
     [OPERATIONS.authorizePayment]: async ({ command, db }) => authorize(
       db,
       command.input as JsonValue,
       options.demoFaults,
-      options.delayedResponseMs,
     ),
     [OPERATIONS.confirmPayment]: async ({ command, db }) => confirm(db, command.input as JsonValue, options.demoFaults),
     [OPERATIONS.cancelPayment]: async ({ command, db }) => cancel(db, command.input as JsonValue, options.demoFaults),
@@ -152,7 +159,34 @@ export async function findPaymentControl(pool: Pool, checkoutId: string): Promis
   return found.rows[0];
 }
 
-async function authorize(db: PoolClient, raw: JsonValue, demoFaults: boolean, delayedResponseMs: number) {
+export async function paymentCompletionPublishDecision(
+  pool: Pool,
+  envelope: MessageEnvelope,
+  options: { readonly demoFaults: boolean; readonly delayedResponseMs: number },
+): Promise<OperationPublishDecision> {
+  if (!options.demoFaults) return publishOperationCompletion();
+  const response = completionResponse(envelope);
+  if (response === undefined) return publishOperationCompletion();
+  const checkoutId = typeof response.checkoutId === 'string' ? response.checkoutId : undefined;
+  const paymentToken = typeof response.paymentToken === 'string' ? response.paymentToken : undefined;
+  if (checkoutId === undefined || paymentToken === undefined) return publishOperationCompletion();
+  if (paymentToken !== DEMO_FIXTURES.paymentUpgradeBarrier
+    && paymentToken !== DEMO_FIXTURES.paymentDelayed) return publishOperationCompletion();
+
+  const control = await findPaymentControl(pool, checkoutId);
+  if (control === undefined) throw new Error(`Payment completion control ${checkoutId} was not armed`);
+  if (paymentToken === DEMO_FIXTURES.paymentUpgradeBarrier) {
+    return control.released ? publishOperationCompletion() : deferOperationCompletion(250);
+  }
+  const enteredAt = control.last_entered_at === null ? Number.NaN : new Date(control.last_entered_at).getTime();
+  if (!Number.isFinite(enteredAt)) throw new Error(`Payment completion control ${checkoutId} has no entry timestamp`);
+  const remainingMs = enteredAt + options.delayedResponseMs - Date.now();
+  return remainingMs > 0
+    ? deferOperationCompletion(Math.max(1, Math.ceil(remainingMs)))
+    : publishOperationCompletion();
+}
+
+async function authorize(db: PoolClient, raw: JsonValue, demoFaults: boolean) {
   const input = parseAuthorizePaymentInput(raw);
   if (demoFaults && (
     input.paymentToken === DEMO_FIXTURES.paymentError
@@ -165,12 +199,6 @@ async function authorize(db: PoolClient, raw: JsonValue, demoFaults: boolean, de
     });
   }
   if (demoFaults && input.paymentToken === DEMO_FIXTURES.paymentNoResponse) return noResponse();
-  if (demoFaults && input.paymentToken === DEMO_FIXTURES.paymentUpgradeBarrier) {
-    await waitForPaymentRelease(db, input.checkoutId);
-  }
-  if (demoFaults && input.paymentToken === DEMO_FIXTURES.paymentDelayed) {
-    await new Promise((resolve) => setTimeout(resolve, delayedResponseMs));
-  }
   const previous = await db.query<PaymentRow>(`
     SELECT authorization_id, checkout_id, reservation_id, status, amount_minor,
            currency, payment_token, authorize_effects, confirm_effects, cancel_effects
@@ -203,20 +231,6 @@ async function authorize(db: PoolClient, raw: JsonValue, demoFaults: boolean, de
     VALUES ($1,$2,$3,$4,$5,$6,$7)
   `, [authorizationId, input.checkoutId, input.reservationId, status, input.amount.minor, input.amount.currency, input.paymentToken]);
   return result(authorizationResult(inserted));
-}
-
-async function waitForPaymentRelease(db: PoolClient, checkoutId: string): Promise<void> {
-  const deadline = Date.now() + 300_000;
-  while (Date.now() < deadline) {
-    const selected = await db.query<{ released: boolean }>(`
-      SELECT released FROM payment.test_controls WHERE checkout_id = $1
-    `, [checkoutId]);
-    const control = selected.rows[0];
-    if (!control) throw new Error(`Payment barrier ${checkoutId} was not armed`);
-    if (control.released) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(`Payment barrier ${checkoutId} was not released`);
 }
 
 async function confirm(db: PoolClient, raw: JsonValue, demoFaults: boolean) {
@@ -312,4 +326,13 @@ function confirmResult(row: PaymentRow): JsonValue {
     authorizationId: row.authorization_id,
     paymentToken: row.payment_token,
   };
+}
+
+function completionResponse(envelope: MessageEnvelope): Record<string, unknown> | undefined {
+  const payload = envelope.payload;
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return undefined;
+  const response = (payload as Record<string, unknown>).response;
+  return response !== null && typeof response === 'object' && !Array.isArray(response)
+    ? response as Record<string, unknown>
+    : undefined;
 }

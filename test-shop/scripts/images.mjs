@@ -7,9 +7,16 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const shop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dockerfile = path.join(shop, 'Dockerfile');
 const ignored = new Set([
-  'node_modules', 'dist', 'coverage', '.packages', '.artifacts',
-  '.npm-cache', '.git', '.DS_Store',
+  'node_modules', 'dist',
 ]);
+const buildFiles = [
+  'Dockerfile',
+  'Dockerfile.dockerignore',
+  'package.json',
+  'package-lock.json',
+  'tsconfig.base.json',
+];
+const buildDirectories = ['.framework', 'apps', 'packages', 'config', 'flows'];
 
 export async function contentTag() {
   const explicit = process.env.TEST_SHOP_IMAGE_TAG;
@@ -57,11 +64,20 @@ async function sourceFiles(root) {
       if (ignored.has(entry.name)) continue;
       const absolute = path.join(directory, entry.name);
       if (entry.isDirectory()) await visit(absolute);
-      else if (entry.isFile() && (await stat(absolute)).size < 5_000_000) result.push(absolute);
+      else if (entry.isFile()) result.push(absolute);
     }
   }
-  await visit(root);
-  return result;
+  for (const file of buildFiles) {
+    const absolute = path.join(root, file);
+    if (!(await stat(absolute)).isFile()) throw new Error(`Docker build input is not a file: ${file}`);
+    result.push(absolute);
+  }
+  for (const directory of buildDirectories) {
+    const absolute = path.join(root, directory);
+    if (!(await stat(absolute)).isDirectory()) throw new Error(`Missing Docker build input directory: ${directory}`);
+    await visit(absolute);
+  }
+  return result.sort((left, right) => left.localeCompare(right));
 }
 
 function run(program, args, options = {}) {

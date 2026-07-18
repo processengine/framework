@@ -10,7 +10,7 @@
     "k8s:doctor": "npm --prefix test-shop run k8s:doctor",
     "k8s:deploy": "npm --prefix test-shop run k8s:deploy",
     "k8s:test": "npm --prefix test-shop run k8s:test",
-    "k8s:resilience": "npm --prefix test-shop run k8s:resilience",
+    "k8s:resilience": "npm --prefix test-shop run k8s:resilience --",
     "k8s:collect": "npm --prefix test-shop run k8s:collect",
     "k8s:down": "npm --prefix test-shop run k8s:down"
   },

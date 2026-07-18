@@ -23,21 +23,21 @@ export class PostgresKafkaOperationService {
   private relayTimer: NodeJS.Timeout | undefined;
   private relayActive = false;
   private started = false;
+  private readonly poolErrorHandler: (error: Error) => void;
   private readonly serviceInstanceId = `${globalThis.process.env.HOSTNAME ?? 'local'}:${randomUUID()}`;
 
   constructor(private readonly options: OperationServiceOptions) {
     this.pool = new Pool({ connectionString: options.databaseUrl });
+    this.poolErrorHandler = options.onPoolError ?? ((error) => {
+      console.error(`[${options.serviceName}] idle PostgreSQL client failed`, error);
+    });
+    this.pool.on('error', this.poolErrorHandler);
     this.transport = createKafkaTransport({
       brokers: options.kafka.brokers,
       clientId: options.kafka.clientId,
       connectionTimeoutMs: 5_000,
       requestTimeoutMs: 10_000,
       retry: { retries: 2, initialRetryTime: 250, maxRetryTime: 1_000 },
-      // Short session/heartbeat so the group coordinator evicts a killed member
-      // quickly and consumer-group rebalances during a rolling update complete in
-      // seconds instead of stacking to minutes (6000 is the broker's minimum
-      // group.min.session.timeout.ms).
-      consumer: { sessionTimeout: 6_000, heartbeatInterval: 2_000, rebalanceTimeout: 12_000 },
     });
     this.ledger = new PostgresOperationLedger(this.pool, options.databaseSchema, options.source);
   }
@@ -73,6 +73,7 @@ export class PostgresKafkaOperationService {
     while (this.relayActive) await new Promise((resolve) => setTimeout(resolve, 10));
     await this.transport.stop();
     await this.pool.end();
+    this.pool.off('error', this.poolErrorHandler);
   }
 
   stats(processId: string): Promise<OperationLedgerStats> {
@@ -169,6 +170,16 @@ export class PostgresKafkaOperationService {
       const messages = await this.ledger.claim(20, 60_000);
       for (const message of messages) {
         try {
+          const decision = await this.options.beforePublish?.({ envelope: message.envelope, pool: this.pool });
+          if (decision?.kind === 'defer') {
+            await this.ledger.reschedule(
+              message.messageId,
+              message.owner,
+              message.claimVersion,
+              decision.retryAfterMs,
+            );
+            continue;
+          }
           await this.transport.publish(message.envelope);
           await this.ledger.markPublished(message.messageId, message.owner, message.claimVersion);
         } catch {

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { describe, expect, it, vi } from 'vitest';
 import type pg from 'pg';
 import type { OutboxRecord, ProcessRecord, StoredOperation } from '@processengine/conductor';
 import { postgresMigrations } from '../src/migrations.js';
@@ -7,6 +8,18 @@ import { createPostgresStorage } from '../src/storage.js';
 const NOW = '2026-01-01T00:00:00.000Z';
 
 describe('PostgresStorage SQL contract', () => {
+  it('observes idle client errors so a PostgreSQL outage is not an unhandled event', async () => {
+    const fake = new FakePool();
+    const onPoolError = vi.fn();
+    const storage = createPostgresStorage({ pool: fake as unknown as pg.Pool, onPoolError });
+    const error = new Error('terminating connection due to administrator command');
+
+    expect(() => fake.emit('error', error)).not.toThrow();
+    expect(onPoolError).toHaveBeenCalledWith(error);
+    await storage.close();
+    expect(fake.listenerCount('error')).toBe(0);
+  });
+
   it('claims outbox and timeout work with SKIP LOCKED leases and fencing versions', async () => {
     const fake = new FakePool();
     const storage = await initializedStorage(fake);
@@ -130,11 +143,15 @@ function processRecord(): ProcessRecord {
   };
 }
 
-class FakePool {
+class FakePool extends EventEmitter {
   readonly calls: Array<{ text: string; values: readonly unknown[] | undefined }> = [];
   readonly process = processRecord();
   operation = operationRow();
   readonly outbox = outboxRow();
+
+  constructor() {
+    super();
+  }
 
   async connect(): Promise<FakeClient> {
     return new FakeClient(this);

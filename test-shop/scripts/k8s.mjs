@@ -131,7 +131,7 @@ async function resilience() {
   try {
     await doctor();
     await assertWorkloads();
-    const output = await withProxy('resilience.mjs');
+    const output = await withProxy('resilience.mjs', process.argv.slice(3));
     process.stdout.write(output);
     await assertWorkloads();
     await collectEvidence('resilience-pass', { 'resilience-acceptance.log': output });
@@ -142,6 +142,7 @@ async function resilience() {
 }
 
 async function assertWorkloads() {
+  const expectedImages = new Map((await imageDefinitions()).map((definition) => [definition.component, definition.image]));
   for (const component of ['shop-host', 'shop-warehouse', 'shop-payment']) {
     kubectl(['rollout', 'status', '--namespace', namespace, `deployment/${release}-${component}`, '--timeout=180s']);
   }
@@ -149,11 +150,26 @@ async function assertWorkloads() {
     kubectl(['rollout', 'status', '--namespace', namespace, `statefulset/${release}-${component}`, '--timeout=240s']);
   }
   for (const component of ['shop-host', 'shop-warehouse', 'shop-payment']) {
+    const expectedImage = expectedImages.get(component);
+    if (expectedImage === undefined) throw new Error(`No expected image definition for ${component}`);
+    const deployment = JSON.parse(kubectl(['get', 'deployment', `${release}-${component}`,
+      '--namespace', namespace, '-o', 'json'], { quiet: true }).stdout);
+    const deploymentContainer = (deployment.spec?.template?.spec?.containers ?? [])
+      .find((container) => container.name === component);
+    if (deploymentContainer?.image !== expectedImage) {
+      throw new Error(`Deployment ${component} uses ${deploymentContainer?.image ?? '<missing>'}; expected ${expectedImage}`);
+    }
     const pods = JSON.parse(kubectl(['get', 'pods', '--namespace', namespace,
       '-l', `app.kubernetes.io/component=${component}`, '-o', 'json'], { quiet: true }).stdout);
     const ready = (pods.items ?? []).filter((pod) => !pod.metadata?.deletionTimestamp
       && pod.status?.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True'));
     if (ready.length !== 2) throw new Error(`Expected exactly two Ready ${component} pods, got ${ready.length}`);
+    for (const pod of ready) {
+      const container = (pod.spec?.containers ?? []).find((item) => item.name === component);
+      if (container?.image !== expectedImage) {
+        throw new Error(`Ready pod ${pod.metadata?.name ?? '<unknown>'} uses ${container?.image ?? '<missing>'}; expected ${expectedImage}`);
+      }
+    }
   }
 }
 
@@ -182,7 +198,7 @@ async function withForwards(script) {
   }
 }
 
-async function withProxy(script) {
+async function withProxy(script, extraArgs = []) {
   const port = await freePort();
   const child = spawn('kubectl', ['--context', context, 'proxy', `--port=${port}`, '--address=127.0.0.1',
     '--accept-hosts=^127\\.0\\.0\\.1$'], { cwd: shop, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -210,7 +226,7 @@ async function withProxy(script) {
     if (!ready) throw new Error(`kubectl proxy did not become ready: ${diagnostics}`);
     const result = execute(process.execPath, [path.join(shop, 'scripts', script),
       '--base-url', urls.host, '--warehouse-url', urls.warehouse, '--payment-url', urls.payment,
-      '--timeout-ms', '300000'], { quiet: true });
+      '--timeout-ms', '300000', ...extraArgs], { quiet: true });
     return `${result.stdout}\n${result.stderr}`.trimStart();
   } finally {
     child.kill('SIGTERM');

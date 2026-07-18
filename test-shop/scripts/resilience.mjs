@@ -21,14 +21,22 @@ assertSafeScope();
 assertTwoHosts();
 await assertBothHostsServeTraffic();
 
+const scenarios = new Map([
+  ['initiating-instance-crash', hostInitiatorCrash],
+  ['durable-outbox-initiator-crash', outboxPublicationInitiatorCrash],
+  ['operation-worker-crash-after-durable-commit', operationWorkerRestart],
+  ['artifact-activation', artifactActivationRollingUpdate],
+  ['full-contour-rolling-update', fullContourRollingUpdate],
+  ['duplicate-late-completion', duplicateAndLateCompletion],
+  ['kafka-outage-recovery', kafkaOutageRecovery],
+  ['postgres-outage-recovery', postgresOutageRecovery],
+]);
+const selected = options.scenario === 'all'
+  ? [...scenarios.entries()]
+  : [...scenarios.entries()].filter(([name]) => name === options.scenario);
+if (selected.length === 0) throw new TypeError(`Unknown resilience scenario: ${options.scenario}`);
 const results = [];
-results.push(await hostInitiatorCrash());
-results.push(await outboxPublicationInitiatorCrash());
-results.push(await operationWorkerRestart());
-results.push(await artifactActivationRollingUpdate());
-results.push(await duplicateAndLateCompletion());
-results.push(await kafkaOutageRecovery());
-results.push(await postgresOutageRecovery());
+for (const [, scenario] of selected) results.push(await scenario());
 
 console.log(JSON.stringify({ gate: 'kubernetes-resilience', status: 'PASS', scenarios: results }));
 
@@ -67,9 +75,9 @@ async function operationWorkerRestart() {
 }
 
 async function outboxPublicationInitiatorCrash() {
-  scaleStatefulSet('kafka', 0);
+  let outage;
   try {
-    waitForNoPods('kafka');
+    outage = stopStatefulSet('kafka');
     const checkoutId = `outbox-initiator-crash-${randomUUID()}`;
     const started = await client.start(input(checkoutId, 'tok-ok'), checkoutId);
     const initiator = started.servedBy;
@@ -78,17 +86,16 @@ async function outboxPublicationInitiatorCrash() {
     }
     const waiting = await client.waitFor(checkoutId, (view) => view.processStatus === 'WAITING');
     const persisted = await client.raw(checkoutId);
-    const failedAttempt = await waitForOutboxAttempt(checkoutId);
     const durableBeforeCrash = outboxRows(checkoutId);
-    if (durableBeforeCrash.length !== 1) {
-      throw new Error(`Expected one durable reserve dispatch before crash: ${JSON.stringify(durableBeforeCrash)}`);
+    if (durableBeforeCrash.length !== 1 || durableBeforeCrash[0].status === 'PUBLISHED'
+      || typeof durableBeforeCrash[0].requestId !== 'string' || durableBeforeCrash[0].requestId.length === 0) {
+      throw new Error(`Expected one unpublished durable reserve dispatch before crash: ${JSON.stringify(durableBeforeCrash)}`);
     }
 
     kubectl(['delete', 'pod', initiator, '--grace-period=0', '--force', '--wait=true', '--timeout=60s']);
     if (hostPods().includes(initiator)) throw new Error(`Initiating pod ${initiator} still exists after forced deletion`);
 
-    scaleStatefulSet('kafka', 1);
-    kubectl(['rollout', 'status', `statefulset/${release}-kafka`, '--timeout=240s']);
+    restoreStatefulSet('kafka');
     kubectl(['rollout', 'status', `deployment/${release}-shop-host`, '--timeout=240s']);
     await waitApplicationsReady();
     const completed = await client.waitFor(checkoutId);
@@ -103,10 +110,10 @@ async function outboxPublicationInitiatorCrash() {
     return {
       name: 'durable-outbox-initiator-crash', checkoutId, deletedPod: initiator,
       pendingRevision: waiting.revision, persistedRevision: persisted.process.revision,
-      finalRevision: completed.revision, failedAttempt, stableRequestId: stable.requestId,
+      finalRevision: completed.revision, stableRequestId: stable.requestId, outage,
     };
   } finally {
-    scaleStatefulSet('kafka', 1);
+    restoreStatefulSet('kafka');
   }
 }
 
@@ -119,22 +126,23 @@ async function artifactActivationRollingUpdate() {
   const pending = await client.waitFor(checkoutId, (view) =>
     view.processStatus === 'WAITING' && view.currentStep === 'authorize-payment');
   await waitPaymentControl(checkoutId, (value) => value.deliveries >= 1);
+  const paymentCommitted = await waitForPaymentCommitted(checkoutId);
   const persisted = await client.raw(checkoutId);
   const execution = { checkoutId, started, pending, persisted };
   const oldPods = applicationPodSets();
   try {
     helmUpgrade('2.0.0');
-    for (const component of ['shop-host', 'shop-warehouse', 'shop-payment']) {
-      kubectl(['rollout', 'status', `deployment/${release}-${component}`, '--timeout=240s']);
-    }
-    const newPods = assertApplicationPodsReplaced(oldPods);
+    kubectl(['rollout', 'status', `deployment/${release}-shop-host`, '--timeout=240s']);
+    const newPods = applicationPodSets();
+    assertPodsReplaced(oldPods, newPods, ['shop-host'], 'Flow activation');
+    assertPodsUnchanged(oldPods, newPods, ['shop-warehouse', 'shop-payment'], 'Flow activation');
     assertTwoHosts();
     const stillPending = await client.raw(checkoutId);
     if (stillPending.process.lifecycle !== 'WAITING'
       || stillPending.process.pending?.stepId !== 'authorize-payment'
       || stillPending.process.flow.version !== '1.0.0'
       || stillPending.process.revision !== persisted.process.revision) {
-      throw new Error(`Pinned v1 process did not remain at the barrier across the full rollout: ${JSON.stringify(stillPending)}`);
+      throw new Error(`Pinned v1 process did not remain at the completion gate across flow activation: ${JSON.stringify(stillPending)}`);
     }
     await releasePaymentControl(checkoutId);
     const completed = await assertDelayedCompleted(execution);
@@ -149,12 +157,58 @@ async function artifactActivationRollingUpdate() {
     if (rawV2.process.flow.version !== '2.0.0' || rawV2.process.outcome !== 'APPROVED_V2') {
       throw new Error('New process did not exhibit the explicit v2 artifact semantics after activation');
     }
-    return evidence('immutable-artifact-v1-to-v2-rolling-helm-activation', execution, completed,
+    return evidence('artifact-activation', execution, completed,
       { completedProcess: completedBefore.checkoutId, v2Process: v2.checkoutId, oldPods, newPods,
-        v1Outcome: completed.outcome, v2Outcome: rawV2.process.outcome });
+        paymentCommitted, v1Outcome: completed.outcome, v2Outcome: rawV2.process.outcome });
   } finally {
     await releasePaymentControl(checkoutId).catch(() => undefined);
     helmUpgrade('1.0.0');
+  }
+}
+
+async function fullContourRollingUpdate() {
+  const checkoutId = `full-contour-rollout-${randomUUID()}`;
+  await armPaymentControl(checkoutId);
+  const started = await client.start(input(checkoutId, 'tok-upgrade-barrier'), checkoutId);
+  const pending = await client.waitFor(checkoutId, (view) =>
+    view.processStatus === 'WAITING' && view.currentStep === 'authorize-payment');
+  await waitPaymentControl(checkoutId, (value) => value.deliveries >= 1);
+  const paymentCommitted = await waitForPaymentCommitted(checkoutId);
+  const persisted = await client.raw(checkoutId);
+  const execution = { checkoutId, started, pending, persisted };
+  const oldPods = applicationPodSets();
+  try {
+    kubectl(['rollout', 'restart',
+      `deployment/${release}-shop-host`,
+      `deployment/${release}-shop-warehouse`,
+      `deployment/${release}-shop-payment`]);
+    for (const component of ['shop-host', 'shop-warehouse', 'shop-payment']) {
+      kubectl(['rollout', 'status', `deployment/${release}-${component}`, '--timeout=240s']);
+    }
+    const newPods = applicationPodSets();
+    assertPodsReplaced(
+      oldPods,
+      newPods,
+      ['shop-host', 'shop-warehouse', 'shop-payment'],
+      'Full contour rolling update',
+    );
+    const stillPending = await client.raw(checkoutId);
+    if (stillPending.process.lifecycle !== 'WAITING'
+      || stillPending.process.pending?.stepId !== 'authorize-payment'
+      || stillPending.process.flow.version !== persisted.process.flow.version
+      || stillPending.process.revision !== persisted.process.revision) {
+      throw new Error(`Unfinished process changed during full contour rolling update: ${JSON.stringify(stillPending)}`);
+    }
+    await releasePaymentControl(checkoutId);
+    const completed = await assertDelayedCompleted(execution);
+    return evidence('full-contour-rolling-update', execution, completed, {
+      oldPods,
+      newPods,
+      paymentCommitted,
+      flowVersion: stillPending.process.flow.version,
+    });
+  } finally {
+    await releasePaymentControl(checkoutId).catch(() => undefined);
   }
 }
 
@@ -178,15 +232,17 @@ async function duplicateAndLateCompletion() {
 }
 
 async function kafkaOutageRecovery() {
-  scaleStatefulSet('kafka', 0);
+  let outage;
   try {
-    waitForNoPods('kafka');
+    outage = stopStatefulSet('kafka');
     const checkoutId = `kafka-recovery-${randomUUID()}`;
     const started = await client.start(input(checkoutId, 'tok-ok'), checkoutId);
     const pending = await client.waitFor(checkoutId, (view) => view.processStatus === 'WAITING');
-    const failedAttempt = await waitForOutboxAttempt(checkoutId);
-    scaleStatefulSet('kafka', 1);
-    kubectl(['rollout', 'status', `statefulset/${release}-kafka`, '--timeout=240s']);
+    const durableDuringOutage = outboxRows(checkoutId);
+    if (durableDuringOutage.length !== 1 || durableDuringOutage[0].status === 'PUBLISHED') {
+      throw new Error(`Kafka outage did not retain an unpublished durable dispatch: ${JSON.stringify(durableDuringOutage)}`);
+    }
+    restoreStatefulSet('kafka');
     await waitApplicationsReady();
     const completed = await client.waitFor(checkoutId);
     assertApproved(completed);
@@ -196,21 +252,20 @@ async function kafkaOutageRecovery() {
       throw new Error(`Kafka recovery did not drain stable outbox records: ${JSON.stringify(drained)}`);
     }
     return { name: 'kafka-outage-recovery', checkoutId, pendingRevision: pending.revision, finalRevision: completed.revision,
-      startedBy: started.servedBy, failedAttempt, drained };
+      startedBy: started.servedBy, outage, durableDuringOutage, drained };
   } finally {
-    scaleStatefulSet('kafka', 1);
+    restoreStatefulSet('kafka');
   }
 }
 
 async function postgresOutageRecovery() {
   const execution = await startDelayed('postgres-recovery');
   const restartSnapshot = deploymentRestartCounts();
-  scaleStatefulSet('postgres', 0);
+  let outage;
   try {
-    waitForNoPods('postgres');
+    outage = stopStatefulSet('postgres');
     await pause(20_000);
-    scaleStatefulSet('postgres', 1);
-    kubectl(['rollout', 'status', `statefulset/${release}-postgres`, '--timeout=240s']);
+    restoreStatefulSet('postgres');
     const recoveredPending = await client.waitFor(execution.checkoutId, (view) => view.processStatus === 'WAITING');
     if (recoveredPending.revision !== execution.persisted.process.revision) {
       throw new Error('Process advanced while PostgreSQL was unavailable');
@@ -221,9 +276,9 @@ async function postgresOutageRecovery() {
       throw new Error(`Applications restarted during automatic PostgreSQL recovery: ${JSON.stringify({ restartSnapshot, afterRestarts })}`);
     }
     return evidence('postgres-outage-automatic-recovery', execution, completed,
-      { restartSnapshot, afterRestarts, heldUnavailableMs: 20_000, enteredBeforeOutage: execution.control });
+      { restartSnapshot, afterRestarts, outage, heldUnavailableMs: 20_000, enteredBeforeOutage: execution.control });
   } finally {
-    scaleStatefulSet('postgres', 1);
+    restoreStatefulSet('postgres');
   }
 }
 
@@ -240,7 +295,8 @@ async function startDelayed(prefix) {
     throw new Error(`${prefix}: durable WAITING state is incomplete: ${JSON.stringify(persisted)}`);
   }
   const control = await waitPaymentControl(checkoutId, (value) => value.deliveries >= 1);
-  return { checkoutId, started, pending, persisted, control };
+  const paymentCommitted = await waitForPaymentCommitted(checkoutId);
+  return { checkoutId, started, pending, persisted, control, paymentCommitted };
 }
 
 async function assertDelayedCompleted(execution) {
@@ -313,22 +369,47 @@ async function waitPaymentControl(checkoutId, predicate) {
   throw new Error(`Payment control ${checkoutId} did not reach its oracle: ${JSON.stringify(last)}`);
 }
 
+async function waitForPaymentCommitted(checkoutId) {
+  const deadline = Date.now() + options.timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    try {
+      last = await client.expectStatus(
+        `${options.paymentUrl}/debug/payments/${encodeURIComponent(checkoutId)}`,
+        {},
+        200,
+      );
+      if (last.status === 'AUTHORIZED' && last.authorize_effects === 1) return last;
+    } catch (error) { last = error; }
+    await pause(200);
+  }
+  throw new Error(`Payment ${checkoutId} did not commit before the resilience mutation: ${JSON.stringify(last)}`);
+}
+
 function applicationPodSets() {
   return Object.fromEntries(['shop-host', 'shop-warehouse', 'shop-payment']
     .map((component) => [component, componentPods(component)]));
 }
 
-function assertApplicationPodsReplaced(before) {
-  const after = applicationPodSets();
-  for (const component of ['shop-host', 'shop-warehouse', 'shop-payment']) {
+function assertPodsReplaced(before, after, components, label) {
+  for (const component of components) {
     const oldSet = new Set(before[component] ?? []);
     const current = after[component] ?? [];
     const retained = current.filter((pod) => oldSet.has(pod));
     if (oldSet.size !== 2 || current.length !== 2 || retained.length > 0) {
-      throw new Error(`Rolling activation did not replace both ${component} pods: ${JSON.stringify({ before: [...oldSet], after: current, retained })}`);
+      throw new Error(`${label} did not replace both ${component} pods: ${JSON.stringify({ before: [...oldSet], after: current, retained })}`);
     }
   }
-  return after;
+}
+
+function assertPodsUnchanged(before, after, components, label) {
+  for (const component of components) {
+    const previous = before[component] ?? [];
+    const current = after[component] ?? [];
+    if (previous.length !== 2 || current.length !== 2 || JSON.stringify(previous) !== JSON.stringify(current)) {
+      throw new Error(`${label} unexpectedly replaced ${component} pods: ${JSON.stringify({ before: previous, after: current })}`);
+    }
+  }
 }
 
 async function waitApplicationsReady() {
@@ -374,15 +455,56 @@ async function assertBothHostsServeTraffic() {
 
 function hostPods() { return componentPods('shop-host'); }
 function componentPods(component) {
+  return allComponentPods(component)
+    .filter((pod) => pod.deletionTimestamp === undefined)
+    .map((pod) => pod.name)
+    .sort();
+}
+
+function allComponentPods(component) {
   const value = JSON.parse(raw('kubectl', [
     '--context', context, '--namespace', namespace, 'get', 'pods',
     '-l', `app.kubernetes.io/component=${component}`, '-o', 'json',
   ]));
-  return (value.items ?? []).filter((pod) => pod.metadata?.deletionTimestamp === undefined).map((pod) => pod.metadata.name).sort();
+  return (value.items ?? []).map((pod) => ({
+    name: pod.metadata?.name,
+    deletionTimestamp: pod.metadata?.deletionTimestamp,
+    ready: pod.status?.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True') ?? false,
+  })).filter((pod) => typeof pod.name === 'string');
 }
 
 function scaleStatefulSet(component, replicas) {
   kubectl(['scale', `statefulset/${release}-${component}`, `--replicas=${replicas}`]);
+}
+
+function stopStatefulSet(component) {
+  const existingPods = allComponentPods(component).map((pod) => pod.name);
+  scaleStatefulSet(component, 0);
+  for (const pod of existingPods) {
+    kubectl(['wait', '--for=delete', `pod/${pod}`, '--timeout=120s']);
+  }
+  const statefulSet = JSON.parse(raw('kubectl', [
+    '--context', context, '--namespace', namespace, 'get', 'statefulset', `${release}-${component}`, '-o', 'json',
+  ]));
+  const remainingPods = allComponentPods(component);
+  const state = {
+    specReplicas: statefulSet.spec?.replicas,
+    readyReplicas: statefulSet.status?.readyReplicas ?? 0,
+    remainingPods: remainingPods.map((pod) => ({ name: pod.name, deletionTimestamp: pod.deletionTimestamp })),
+  };
+  if (state.specReplicas !== 0 || state.readyReplicas !== 0 || remainingPods.length !== 0) {
+    throw new Error(`${component} was not fully stopped: ${JSON.stringify(state)}`);
+  }
+  return state;
+}
+
+function restoreStatefulSet(component) {
+  scaleStatefulSet(component, 1);
+  kubectl(['rollout', 'status', `statefulset/${release}-${component}`, '--timeout=240s']);
+  const pods = allComponentPods(component);
+  if (pods.length !== 1 || !pods[0].ready || pods[0].deletionTimestamp !== undefined) {
+    throw new Error(`${component} was not restored Ready: ${JSON.stringify(pods)}`);
+  }
 }
 
 function restartCount(pod) {
@@ -412,40 +534,12 @@ function outboxRows(checkoutId) {
   });
 }
 
-async function waitForOutboxAttempt(checkoutId) {
-  const deadline = Date.now() + 120000;
-  while (Date.now() < deadline) {
-    const row = outboxRows(checkoutId)[0];
-    // Claiming changes PENDING -> CLAIMED and increments attempt. Durable proof of
-    // a failed publish followed by rescheduling is either of:
-    //   * status PENDING with attempt >= 1 (row was rescheduled after a failed
-    //     publish and is awaiting its next claim), or
-    //   * attempt >= 2 (the record was claimed, its publish did not succeed, it was
-    //     rescheduled/lease-reclaimed and claimed again) — a re-claim never happens
-    //     for a first, still-in-flight attempt, so this excludes a mere in-flight
-    //     claim while remaining robust to sampling the narrow PENDING sub-window,
-    //     which under a down broker lasts ~1s between multi-second publish blocks.
-    if (row && ((row.status === 'PENDING' && row.attempt >= 1) || row.attempt >= 2)) return row;
-    await pause(500);
-  }
-  throw new Error(`No failed durable outbox attempt was observed for ${checkoutId}`);
-}
-
 function deploymentRestartCounts() {
   const result = {};
   for (const component of ['shop-host', 'shop-warehouse', 'shop-payment']) {
     for (const pod of componentPods(component)) result[pod] = restartCount(pod);
   }
   return result;
-}
-
-function waitForNoPods(component) {
-  const deadline = Date.now() + 120000;
-  while (Date.now() < deadline) {
-    if (componentPods(component).length === 0) return;
-    sleep(250);
-  }
-  throw new Error(`${component} pod was not removed`);
 }
 
 function kubectl(args) { raw('kubectl', ['--context', context, '--namespace', namespace, ...args], false); }

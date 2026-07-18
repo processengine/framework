@@ -28,7 +28,7 @@
     "policy": {
       "id": "local-payment",
       "version": "1",
-      "completionTimeoutMs": 180000,
+      "completionTimeoutMs": 60000,
       "dispatch": { "maxAttempts": 600, "retryDelayMs": 1000 }
     }
   },

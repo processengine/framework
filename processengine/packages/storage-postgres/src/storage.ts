@@ -26,6 +26,8 @@ export interface PostgresStorageOptions {
   readonly applicationName?: string;
   readonly ssl?: pg.PoolConfig['ssl'];
   readonly migrationMode?: 'validate' | 'apply';
+  /** Observes errors emitted by idle pooled clients. The adapter always installs a listener so outages do not terminate Node.js. */
+  readonly onPoolError?: (error: Error) => void;
 }
 
 export interface PostgresStorageHealth {
@@ -40,6 +42,7 @@ export class PostgresStorage implements ProcessStorage {
   private readonly schema: string;
   private readonly ownsPool: boolean;
   private readonly migrationMode: 'validate' | 'apply';
+  private readonly poolErrorHandler: (error: Error) => void;
   private initialized = false;
   private closed = false;
 
@@ -60,6 +63,10 @@ export class PostgresStorage implements ProcessStorage {
       application_name: options.applicationName ?? 'processengine-storage',
       ...(options.ssl === undefined ? {} : { ssl: options.ssl }),
     });
+    this.poolErrorHandler = options.onPoolError ?? ((error) => {
+      console.error('[processengine:postgres] idle pool client failed', error);
+    });
+    this.pool.on('error', this.poolErrorHandler);
   }
 
   connectionProvider(): PostgresConnectionProvider {
@@ -82,6 +89,7 @@ export class PostgresStorage implements ProcessStorage {
   async close(): Promise<void> {
     if (this.closed) return;
     if (this.ownsPool) await this.pool.end();
+    this.pool.off('error', this.poolErrorHandler);
     this.closed = true;
     this.initialized = false;
   }

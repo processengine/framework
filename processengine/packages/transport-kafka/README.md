@@ -13,14 +13,24 @@ disabled and new consumer groups begin at the current end of a topic. Invalid
 records block consumption by default; applications may explicitly choose skip
 or dead-letter behavior.
 
-`connectionTimeoutMs`, `requestTimeoutMs`, and KafkaJS `retry` are exposed so a
-host can bound one `publish()` attempt. Connector defaults are 5 seconds for
-connection, 10 seconds per request, and two short retries; they fit below the
-conductor's default 60-second outbox lease. A host that increases those bounds
+`connectionTimeoutMs`, `requestTimeoutMs`, KafkaJS `retry`, and
+`publishTimeoutMs` bound transport work below a durable outbox lease. Defaults
+are 5 seconds for connection, 10 seconds per request, two short retries, and 15
+seconds for one caller's `publish()` wait. A host that increases those bounds
 must also increase `worker.outboxLeaseMs`. The connector applies the finite
 retry policy explicitly to its idempotent producer: KafkaJS otherwise retries
-an idempotent producer effectively forever. Cross-attempt durability belongs to
-Conductor's outbox policy, using the stable message and request identifiers.
+an idempotent producer effectively forever.
+
+KafkaJS cannot cancel a `producer.send()` that has already started. A
+`KafkaPublishTimeoutError` therefore reports `deliveryStatus: "unknown"` for an
+in-flight send, or `"not-attempted"` when the message timed out waiting behind
+another send. The transport keeps a single local send in flight. Repeated calls
+with the same stable `messageId` and identical envelope join that send; after a
+caller timeout, its late success is consumed by the next retry without issuing
+another local send, while a late rejection permits a new attempt. Reusing an
+active or late-success `messageId` with different content throws
+`KafkaPublishIdentityConflictError`. Cross-attempt durability and retry timing
+remain the Conductor outbox's responsibility, and delivery remains at-least-once.
 
 ```ts
 const transport = createKafkaTransport({

@@ -33,6 +33,15 @@ export interface OperationBeforeAcceptEvent {
   readonly pool: Pool;
 }
 
+export interface OperationBeforePublishEvent {
+  readonly envelope: MessageEnvelope;
+  readonly pool: Pool;
+}
+
+export type OperationPublishDecision =
+  | { readonly kind: 'publish' }
+  | { readonly kind: 'defer'; readonly retryAfterMs: number };
+
 export interface OperationServiceOptions {
   readonly serviceName: string;
   readonly source: string;
@@ -48,6 +57,10 @@ export interface OperationServiceOptions {
   readonly migrateDomain?: (pool: Pool) => Promise<void>;
   readonly beforeAccept?: (event: OperationBeforeAcceptEvent) => Promise<void> | void;
   readonly afterCommit?: (event: OperationCommitEvent) => Promise<void> | void;
+  readonly beforePublish?: (
+    event: OperationBeforePublishEvent,
+  ) => Promise<OperationPublishDecision> | OperationPublishDecision;
+  readonly onPoolError?: (error: Error) => void;
   readonly outboxPollMs?: number;
 }
 
@@ -62,3 +75,10 @@ export interface OperationLedgerStats {
 export const result = (value: JsonValue): OperationHandlerOutcome => ({ kind: 'result', result: value });
 export const failure = (error: OperationError): OperationHandlerOutcome => ({ kind: 'error', error });
 export const noResponse = (): OperationHandlerOutcome => ({ kind: 'no-response' });
+export const publishOperationCompletion = (): OperationPublishDecision => ({ kind: 'publish' });
+export const deferOperationCompletion = (retryAfterMs: number): OperationPublishDecision => {
+  if (!Number.isSafeInteger(retryAfterMs) || retryAfterMs <= 0) {
+    throw new TypeError('retryAfterMs must be a positive integer');
+  }
+  return { kind: 'defer', retryAfterMs };
+};

@@ -42,12 +42,20 @@ import { createPostgresStorage, runPostgresMigrations } from '@processengine/sto
 
 const storage = createPostgresStorage({
   connectionString: process.env.DATABASE_URL!,
-  schema: 'processengine'
+  schema: 'processengine',
+  onPoolError: (error) => logger.error({ error }, 'idle PostgreSQL client failed')
 });
 
 await runPostgresMigrations(storage.connectionProvider());
 await storage.initialize();
 ```
+
+The adapter always registers a `pg.Pool` `error` listener. This is required for
+idle connections that are terminated during a PostgreSQL restart or outage;
+without a listener Node.js treats the event as unhandled and exits. The optional
+`onPoolError` callback integrates those events with application logging. Its
+default writes the error to `console.error`; operation calls still reject
+normally while PostgreSQL is unavailable and can recover through the pool.
 
 Applications that run with a least-privilege runtime role should execute
 `runPostgresMigrations()` from a separate deployment job. Runtime startup does
