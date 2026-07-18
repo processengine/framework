@@ -66,7 +66,7 @@ contour is left running.
       no secrets/node_modules/dist.
 - [x] Three packages published to npm `@processengine@0.1.0`, verified by clean
       install; `test-shop` repointed to published versions and re-smoked.
-- [ ] Annotated tag `v0.1.0` pushed only after npm publish succeeds.
+- [x] Annotated tag `v0.1.0` pushed only after npm publish succeeds.
 - [x] `docs/production-readiness/PLAN.md` + P0/P1 SCAM task files exist.
 - [x] Evidence: the local acceptance commands complete with exit code 0.
 
@@ -108,10 +108,12 @@ this project's own namespace/resources/images/volumes.
 ## Publication state
 
 Local acceptance, GitHub source publication, npm publication, registry install,
-and registry-backed Kubernetes business verification are complete. The initial
+registry-backed Kubernetes business verification, and tag publication are
+complete. The initial
 accepted source-and-reports push was independently verified at
-`8968afb41a7303c86a8f2a734561f2cb82ed7fb4`. Only tag `v0.1.0` remains
-unchecked until it is created, pushed, and read back.
+`8968afb41a7303c86a8f2a734561f2cb82ed7fb4`. Release commit and annotated tag
+`v0.1.0` were independently verified at
+`417e1d731f33de02ebd3225e9dd72f5fdff7357e`.
 
 ## Stop conditions
 

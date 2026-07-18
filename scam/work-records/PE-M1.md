@@ -1,13 +1,13 @@
 # Work Record: PE-M1 — Local Kubernetes contour to verified release 0.1.0
 
 Date: `2026-07-18`
-Status: `NPM PUBLISHED — RELEASE TAG PENDING`
+Status: `DONE`
 
 ## Task Contract
 
 See `scam/TASK.md`. The local contour and all executable acceptance gates are
-complete. GitHub `main` and the npm packages are published; only the release
-tag is pending.
+complete. GitHub `main`, the npm packages, registry consumer, and annotated
+release tag are published and verified.
 
 ## Starting baseline
 
@@ -92,12 +92,14 @@ run in `test-shop/.artifacts/k8s/2026-07-18T19-08-07.550Z-resilience-pass/`.
   before publication.
 - `test-shop` now consumes the registry packages; its deterministic and live
   Kubernetes business gates passed.
-- Annotated tag `v0.1.0` has not yet been created.
+- Release commit `417e1d731f33de02ebd3225e9dd72f5fdff7357e`
+  was read back through the remote branch and GitHub API.
+- Annotated tag `v0.1.0` was pushed; its local and dereferenced remote targets
+  both equal the release commit.
 - GitHub Actions secret `NPM_TOKEN` is configured; its value is not stored in
   the repository.
 
 ## Remaining publication sequence
 
-1. Commit and push the post-publication consumer/report state.
-2. Verify local `main`, remote `main`, and the GitHub commits API agree.
-3. Create, push, and read back annotated tag `v0.1.0`.
+None for PE-M1. Production hardening remains the separate roadmap in
+`docs/production-readiness/PLAN.md`.

@@ -2,7 +2,7 @@
 
 Date: 2026-07-18
 
-Status: **NPM PUBLISHED — RELEASE TAG PENDING**
+Status: **RELEASE COMPLETE**
 
 ## Accepted builds
 
@@ -47,10 +47,10 @@ before publication. Registry metadata for all three packages reports version
 `0.1.0` and license `Apache-2.0`; anonymous clean install and public imports
 passed.
 
-GitHub `main` was initially published and independently verified. The
-post-publication consumer/report commits are prepared for the final push. The
-annotated tag `v0.1.0` is intentionally still pending until that push is
-verified.
+GitHub release commit `417e1d731f33de02ebd3225e9dd72f5fdff7357e`
+was independently verified through local `main`, the remote branch ref, and the
+GitHub commits API. Annotated tag `v0.1.0` was pushed and its dereferenced remote
+target is the same release commit.
 
 The repository Actions secret `NPM_TOKEN` is configured; its value is not in
 the repository. Kubernetes remains running on `docker-desktop`; Compose is

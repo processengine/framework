@@ -7,11 +7,10 @@ Last verified: `2026-07-18`
 - **Purpose**: ProcessEngine is a framework for durable, deterministic execution
   of long-running domain business processes. The canonical model is
   `processengine/docs/PROCESSENGINE_CANON.md`.
-- **Current milestone (PE-M1)**: create and verify annotated tag `v0.1.0` for
-  the accepted and published release. Contract: `scam/TASK.md`.
+- **Current milestone (PE-M1)**: complete. Contract: `scam/TASK.md`.
 - **Acceptance state**: all local deterministic, package, Compose, Kubernetes,
   resilience, and live SPI gates pass. GitHub `main` and all three npm packages
-  are published; the release tag is pending.
+  are published; annotated tag `v0.1.0` is published and verified.
 
 ## System map and ownership
 
@@ -94,9 +93,11 @@ Primary evidence directories:
 - The project publication credential is stored as GitHub Actions secret
   `NPM_TOKEN`; it is not stored in the repository.
 
-## Active task and next result
+## Completed task and next result
 
 - Task Contract: `scam/TASK.md`.
 - Work record: `scam/work-records/PE-M1.md`.
-- Next result: push and read back the post-publication release commit, then
-  create and verify annotated tag `v0.1.0`.
+- Release commit/tag target:
+  `417e1d731f33de02ebd3225e9dd72f5fdff7357e`.
+- Next work is selected from `docs/production-readiness/PLAN.md`; it is outside
+  PE-M1 acceptance.

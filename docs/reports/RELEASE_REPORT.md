@@ -5,8 +5,7 @@
 - **Runtime-accepted commit**: `6956299de7da03d8074530f0856339e0915c8146`
 - **Runtime image tag**: `sha-d3eb3338ca20f71f`
 - **Package metadata license**: Apache-2.0
-- **Release state**: acceptance PASS; GitHub source and npm packages published;
-  release tag pending
+- **Release state**: **COMPLETE**
 
 ## 1. Acceptance summary
 
@@ -32,8 +31,11 @@ Full runtime detail is in `docs/reports/K8S_ACCEPTANCE_REPORT.md`.
 - Initial accepted source-and-reports commit:
   `8968afb41a7303c86a8f2a734561f2cb82ed7fb4`; local `main`, `ls-remote`, and
   the GitHub commits API returned the same SHA after publication.
-- Annotated tag `v0.1.0`: **PENDING** until the post-publication consumer and
-  report commit is pushed and read back from GitHub.
+- Release commit:
+  `417e1d731f33de02ebd3225e9dd72f5fdff7357e`; local `main`, remote `main`,
+  and the GitHub commits API agreed before tagging.
+- Annotated tag `v0.1.0`: **PUBLISHED**; its local and dereferenced remote
+  targets both equal the release commit above.
 
 The repository excludes `node_modules`, `dist`, generated tarballs/caches,
 `.artifacts`, `.claude`, `.env`, `.npmrc`, kubeconfig, tokens and Kubernetes
@@ -76,7 +78,8 @@ Post-publication deploy evidence:
 - `test-shop/.artifacts/k8s/2026-07-18T20-55-36.992Z-deploy-pass/`;
 - `test-shop/.artifacts/k8s/2026-07-18T20-59-27.257Z-business-pass/`.
 
-Only annotated tag `v0.1.0` remains pending in this report revision.
+The npm packages, registry consumer, GitHub source, and annotated release tag
+are all published and verified.
 
 ## 4. Fixes included
 
