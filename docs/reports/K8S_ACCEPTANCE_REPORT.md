@@ -2,157 +2,155 @@
 
 - **Date/time**: 2026-07-18 (UTC)
 - **Milestone**: PE-M1 — local Kubernetes contour to verified release 0.1.0
-- **Source commit**: _(recorded at GitHub publish — see `docs/reports/RELEASE_REPORT.md`)_
-- **Kubernetes context**: `docker-desktop` (namespace `processengine-test-shop`)
+- **Runtime source commit**: `6956299de7da03d8074530f0856339e0915c8146`
+- **Application content tag**: `sha-d3eb3338ca20f71f`
+- **Kubernetes context**: `docker-desktop`
+- **Namespace / Helm release**: `processengine-test-shop` / `test-shop`
 
-## 1. Environment
+Documentation commits made after the runtime gates do not enter the Docker build
+input set and therefore do not change this content tag.
 
-| Tool | Version |
+## 1. Environment and deployed contour
+
+| Item | Observed value |
 | --- | --- |
 | Docker Engine | 29.6.1 |
 | Kubernetes server | v1.36.1 |
 | kubectl client | v1.33.4 |
 | Helm | v4.2.1 |
-| Node.js (runner) | v22.23.1 (nvm; host default 20.19.0) |
-| npm | 10.9.8 |
+| Application/runtime Node | 22.13.0 |
+| Host runner Node | 20.19.0; emits the expected `engines >=22` warning |
+| Kafka | `apache/kafka:4.3.1`, KRaft, 1/1 Ready |
+| PostgreSQL | `postgres:16.8-alpine`, 1/1 Ready |
+| shop-host | 2/2 Ready |
+| shop-warehouse | 2/2 Ready |
+| shop-payment | 2/2 Ready |
 
-**Application image tag**: `sha-a429fcdf63c10e0f` (content-addressed by `images.mjs`)
+All three Deployments and all six Ready application pods used the exact
+`repository:sha-d3eb3338ca20f71f` image asserted by `assertWorkloads()` before
+the business and resilience runners started. Both Kafka and PostgreSQL PVCs
+were Bound. The migrations and topic Jobs completed. The final active flow was
+restored to `1.0.0`; the Kubernetes contour was left running.
 
-| Image | Repository:tag |
+Deploy evidence (exit 0):
+`test-shop/.artifacts/k8s/2026-07-18T19-11-45.201Z-deploy-pass/`.
+Final steady-state snapshot:
+`test-shop/.artifacts/k8s/2026-07-18T19-21-17.138Z-manual/`.
+
+## 2. Delivery semantics
+
+Transport delivery is **at-least-once**. Operation services deduplicate the
+stable `requestId` in the same transaction as each domain change, and the
+conductor accepts only the first valid completion for a pending operation. The
+verified claim is therefore logically exactly-once domain effects over
+at-least-once physical delivery; physical exactly-once delivery is not claimed.
+
+## 3. Gate results
+
+### 3.1 Deterministic and Compose gates — PASS
+
+| Gate | Observed result | Evidence |
+| --- | --- | --- |
+| `npm run check` | exit 0; framework 57 passed, 8 live skipped; test-shop 42 passed | `test-shop/.artifacts/k8s/2026-07-18T19-22-15.3NZ-local-gates-pass/npm-check.log` |
+| package smoke / tarballs | exit 0; clean install/import smoke; Apache-2.0 present in all packages | same directory |
+| `compose:doctor/up/test` | exit 0; `business-acceptance=PASS`, 16/16; Compose stopped afterward without deleting volumes | same directory (`compose-*.log`) |
+
+The host runner is Node 20.19.0, below the declared Node 22 engine, so npm
+printed `EBADENGINE` warnings. The same packages built and the live suites ran
+inside Node 22.13.0; the warning did not suppress a failed command.
+
+### 3.2 Kubernetes business gate — PASS
+
+`npm run k8s:test` exited 0. Helm health test phase was `Succeeded`, and
+`gate=business-acceptance status=PASS` covered all 16 terminal outcomes,
+terminal payload references, domain ledgers, duplicates and completion
+anomalies.
+
+Evidence:
+`test-shop/.artifacts/k8s/2026-07-18T19-15-23.099Z-business-pass/`.
+
+| # | Scenario | Outcome | Revision | Warehouse effects | Payment effects |
+| --- | --- | --- | --- | --- | --- |
+| 1 | success | APPROVED | 4 | 1 | 2 |
+| 2 | service-duplicate-completion | APPROVED | 4 | 1 | 2 |
+| 3 | out-of-stock | OUT_OF_STOCK | 2 | 1 | 0 |
+| 4 | warehouse-error | WAREHOUSE_UNAVAILABLE | 2 | 1 | 0 |
+| 5 | warehouse-handler-failed | WAREHOUSE_HANDLER_FAILED | 2 | 1 | 0 |
+| 6 | payment-declined | PAYMENT_DECLINED | 4 | 2 | 1 |
+| 7 | payment-error | PAYMENT_ERROR_COMPENSATED | 4 | 2 | 1 |
+| 8 | payment-error + stock compensation failure | COMPENSATION_FAILED | 4 | 2 | 1 |
+| 9 | payment-timeout (`completionTimeoutMs=60000`) | PAYMENT_ERROR_COMPENSATED | 4 | 2 | 1 |
+| 10 | confirm-failure | PAYMENT_CONFIRM_FAILED | 6 | 2 | 3 |
+| 11 | confirm-failure + stock compensation failure | COMPENSATION_FAILED | 6 | 2 | 3 |
+| 12 | confirm-error | PAYMENT_CONFIRM_ERROR_COMPENSATED | 6 | 2 | 3 |
+| 13 | confirm-error + stock compensation failure | COMPENSATION_FAILED | 6 | 2 | 3 |
+| 14 | confirm-error + payment compensation failure | PAYMENT_COMPENSATION_FAILED | 5 | 1 | 3 |
+| 15 | payment-compensation-failure | PAYMENT_COMPENSATION_FAILED | 5 | 1 | 3 |
+| 16 | compensation-failure | COMPENSATION_FAILED | 4 | 2 | 1 |
+
+The duplicate matrix included same/new message IDs, duplicate commands,
+conflicting completion, foreign source/request ID, malformed input and a late
+completion. The terminal process and domain-effect counters remained unchanged.
+
+### 3.3 Kubernetes resilience gate — PASS
+
+`npm run k8s:resilience` exited 0 with all eight scenarios. Evidence:
+`test-shop/.artifacts/k8s/2026-07-18T19-19-07.805Z-resilience-pass/`.
+
+| Scenario | Observed acceptance |
 | --- | --- |
-| shop-host | `processengine/test-shop-shop-host:sha-a429fcdf63c10e0f` |
-| shop-warehouse | `processengine/test-shop-shop-warehouse:sha-a429fcdf63c10e0f` |
-| shop-payment | `processengine/test-shop-shop-payment:sha-a429fcdf63c10e0f` |
-| kafka | `apache/kafka:4.3.1` (KRaft: `process.roles=broker,controller`) |
-| postgres | `postgres:16.8-alpine` |
+| initiating-instance-crash | Initiating host was force-deleted; the other host completed the pinned process, revision 2→4. |
+| durable-outbox-initiator-crash | Kafka was actually absent (`spec=0`, `ready=0`, no pod); a stable unpublished durable request survived initiator deletion, drained after recovery and completed APPROVED. |
+| operation-worker-crash-after-durable-commit | Payment pod restarted 0→1 after its atomic commit; command was delivered twice to two service instances; one domain effect and final revision 4. |
+| artifact-activation | Only both host pods were replaced; warehouse/payment identities were unchanged; waiting v1 stayed at the same revision and flow 1.0.0, then completed; an earlier terminal process stayed unchanged and a new v2 process returned APPROVED_V2. |
+| full-contour-rolling-update | Both replicas of host, warehouse and payment were replaced while a committed operation completion was held; v1 remained pinned and then completed with one effect per operation. |
+| duplicate-late-completion | Replayed completion did not change terminal revision/results. |
+| kafka-outage-recovery | Actual `spec=0/ready=0/no pod`; durable outbox row was not PUBLISHED during outage; all three rows became PUBLISHED and the process completed revision 4. |
+| postgres-outage-recovery | Actual `spec=0/ready=0/no pod` held for 20 s; process completed APPROVED revision 4; all six application restart counts remained 0. |
 
-## 2. Deployed workloads
+### 3.4 Live SPI conformance — PASS
 
-| Workload | Kind | Ready |
-| --- | --- | --- |
-| test-shop-shop-host | Deployment | 2/2 |
-| test-shop-shop-warehouse | Deployment | 2/2 |
-| test-shop-shop-payment | Deployment | 2/2 |
-| test-shop-kafka | StatefulSet | 1/1 (KRaft) |
-| test-shop-postgres | StatefulSet | 1/1 |
-| test-shop-migrations | Job | Complete |
-| test-shop-topics | Job | Complete |
+The exact live suites ran inside a temporary Node 22.13.0 pod in the namespace,
+using the cluster Kafka listener and a Secret reference for PostgreSQL. The pod
+was deleted afterward.
 
-- **PVCs Bound**: `data-test-shop-kafka-0` (1Gi), `data-test-shop-postgres-0` (1Gi).
-- **PodDisruptionBudget**: `test-shop-shop-host` minAvailable=1.
-- **Restarts**: 0 across all application/infra pods at steady state; no CrashLoopBackOff, no unexpected Pending.
-- **Kafka topics**: `shop.warehouse.commands.v1`, `shop.payment.commands.v1`, `shop.operation.completions.v1`, `__consumer_offsets`.
-- **PostgreSQL schemas** (migrations applied): `processengine`, `warehouse`, `warehouse_service`, `payment`, `payment_service`.
+| Suite | Result |
+| --- | --- |
+| `@processengine/storage-postgres test:live` | exit 0; 6/6 passed |
+| `@processengine/transport-kafka test:live` | exit 0; 2/2 passed, including reusable SPI conformance and real-broker round trip |
 
-## 3. Delivery semantics (precise wording)
+Evidence:
+`test-shop/.artifacts/k8s/2026-07-18T19-19-52.3NZ-live-conformance-pass/`.
 
-Transport is **at-least-once**; operation integrations are **crash-safe
-idempotent** keyed by `requestId` (one domain effect per operation request), and
-the conductor accepts at most one completion per pending call. Together these
-provide **logically exactly-once domain effects over at-least-once physical
-delivery** (canon §2.9). No physical exactly-once delivery is claimed.
+## 4. Defects found and fixed
 
-## 4. Gate results
-
-### 4.1 Deterministic gate — `npm run check`
-
-| Suite | Result | Evidence |
-| --- | --- | --- |
-| framework build+typecheck+unit | PASS — 48 passed / 8 skipped (live suites) | `npm run check`, exit 0 |
-| test-shop build+typecheck+unit | PASS — 37 passed | `npm run check`, exit 0 |
-
-Deterministic subset includes the **16 checkout terminal-state matrix** tests
-(`tests/checkout-terminal-matrix.test.ts`, 17 tests) proving every `end` step is
-reachable and terminal `response`/`error` equals the referenced stored result.
-
-### 4.2 Business gate — `npm run k8s:test` → **PASS** (exit 0)
-
-Helm test (health) phase: **Succeeded**. `gate=business-acceptance status=PASS`,
-16/16 scenarios. Each scenario asserted terminal COMPLETED/outcome, exact
-terminal `response`/`error`, warehouse+payment ledgers and domain-effect counters,
-and idempotent start (up to 12 concurrent starts → one process instance).
-
-| # | Scenario (live process id prefix) | Terminal outcome | rev | wh eff | pay eff | Result |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | success (12 concurrent starts, replay) | APPROVED | 4 | 1 | 2 | PASS |
-| 2 | service-duplicate-completion | APPROVED | 4 | 1 | 2 | PASS |
-| 3 | out-of-stock | OUT_OF_STOCK | 2 | 1 | 0 | PASS |
-| 4 | warehouse-error (domain error) | WAREHOUSE_UNAVAILABLE | 2 | 1 | 0 | PASS |
-| 5 | warehouse-handler-failed (technical) | WAREHOUSE_HANDLER_FAILED | 2 | 1 | 0 | PASS |
-| 6 | payment-declined (+ stock release) | PAYMENT_DECLINED | 4 | 2 | 1 | PASS |
-| 7 | payment-error (+ stock compensation) | PAYMENT_ERROR_COMPENSATED | 4 | 2 | 1 | PASS |
-| 8 | payment-error + stock-compensation-fail | COMPENSATION_FAILED | 4 | 2 | 1 | PASS |
-| 9 | payment-timeout (60s completion timeout) | PAYMENT_ERROR_COMPENSATED | 4 | 2 | 1 | PASS |
-| 10 | confirm-failure (business) | PAYMENT_CONFIRM_FAILED | 6 | 2 | 3 | PASS |
-| 11 | confirm-failure + stock-compensation-fail | COMPENSATION_FAILED | 6 | 2 | 3 | PASS |
-| 12 | confirm-error (technical) | PAYMENT_CONFIRM_ERROR_COMPENSATED | 6 | 2 | 3 | PASS |
-| 13 | confirm-error + stock-compensation-fail | COMPENSATION_FAILED | 6 | 2 | 3 | PASS |
-| 14 | confirm-error + payment-compensation-fail | PAYMENT_COMPENSATION_FAILED | 5 | 1 | 3 | PASS |
-| 15 | payment-compensation-failure | PAYMENT_COMPENSATION_FAILED | 5 | 1 | 3 | PASS |
-| 16 | compensation-failure | COMPENSATION_FAILED | 4 | 2 | 1 | PASS |
-
-**Duplicate/idempotency/anomaly matrix** (embedded per scenario, all PASS):
-- `success` runs 12 concurrent starts under one idempotency key → single process
-  instance; then replays the stored completion (same requestId) → revision/results
-  unchanged.
-- `service-duplicate-completion`: payment service republishes completion with the
-  **same requestId and a new messageId**, recorded only after Kafka ACK
-  (`publications:1`, distinct `messageId` vs `originalMessageId`) → terminal
-  revision & results unchanged, effect counters unchanged.
-- Command-duplicate / same-message replay / conflicting second completion /
-  foreign-source / foreign-request-id / malformed / valid-late-after-timeout
-  completions are exercised inside scenarios and leave persisted state unchanged;
-  the consumer keeps processing subsequent messages after a malformed message.
-
-All 16 checkout `end`/terminal states are covered across the deterministic
-terminal matrix (§4.1) and these live scenarios; the live API response equals the
-terminal step result (asserted by `assertExactTerminalReference`).
-
-### 4.3 Resilience gate — `npm run k8s:resilience`
-
-_(filled below)_
-
-### 4.4 Live SPI conformance against the deployed contour
-
-_(filled below)_
-
-## 5. Requirement → test → evidence → result
-
-_(filled below)_
-
-## 6. Defects found and fixed
-
-| ID | Defect | Fix | Re-run |
+| ID | Confirmed defect | Implemented fix | Verification |
 | --- | --- | --- | --- |
-| DEFECT-1 | Docker build `npm ci` failed `EACCES mkdir /app/test-shop/node_modules`: WORKDIR root-owned under `USER node` | `test-shop/Dockerfile`: `chown -R node:node /app` + `USER node` before `COPY` | `docker build --target shop-host` exit 0; full deploy exit 0 |
-| DEFECT-2 | Helm 4 server-side apply rejected `FLOW_FILES` env: unquoted comma in YAML flow-mapping created a bogus field | `applications.yaml`: quoted the two-path value | `helm template` clean; `k8s:deploy` exit 0 |
-| DEFECT-3 | Resilience `durable-outbox-initiator-crash` failed: oracle `waitForOutboxAttempt` required sampling the ~1s `PENDING` sub-window every 500ms/60s, but each `publish()` to a down broker blocks 3–16s (kafkajs), so the row is `CLAIMED` almost continuously and the narrow `PENDING` window can be missed → flaky. **Framework behavior is correct**: reproduced independently — outbox row cycled `CLAIMED` attempt 1→…→10 (incl. reclaim by a second conductor replica) and drained to `PUBLISHED`/`COMPLETED rev=4` on Kafka recovery. | `resilience.mjs`: accept `attempt>=2` (unambiguous failed-publish→reschedule→reclaim, strictly stronger than one `PENDING` sighting) OR `PENDING && attempt>=1`; deadline 60s→120s. No check weakened; end-to-end durability assertions unchanged. | `npm run k8s:resilience` re-run (below) |
-| INFRA-1 (not a code defect) | BuildKit `DeadlineExceeded` pulling `docker/dockerfile:1.7` frontend | Pre-pulled frontend + base + infra images | deploy proceeded |
-| FOLLOW-UP-1 (non-blocking) | migrations Job first pod `ECONNREFUSED` before Postgres ready; Job backoff retried and Completed | none required; note for readiness plan (add wait/init-container) | Job Complete |
+| DEFECT-1 | Docker build ran `npm ci` in a root-owned WORKDIR. | Own `/app` before switching to `node`. | deploy exit 0 |
+| DEFECT-2 | Unquoted comma in Helm flow-mapping corrupted `FLOW_FILES`. | Quote the env value. | Helm lint/render and deploy exit 0 |
+| DEFECT-3 | Outage oracle hid terminating pods and inferred failed publication from `attempt>=2`. | Wait for pod deletion and assert StatefulSet `spec=0`, `ready=0`, no pods; assert durable unpublished row without interpreting attempt count. | Kafka/Postgres outage scenarios PASS |
+| DEFECT-4 | `tok-upgrade-barrier` blocked a Kafka handler and created a rollout/rebalance circular wait; common flow config also rolled unrelated services. | Commit the domain result promptly and gate only service-outbox publication; scope `FLOW_ACTIVE_VERSION` to host; split artifact activation from full-contour rollout; restore 60 s timeout and 20 s grace period. | artifact activation and full rollout PASS |
+| DEFECT-5 | A caller-only Kafka publish timeout left orphan sends and allowed repeated/concurrent sends. | Global single-flight, same-message coalescing, late-result handling, finite retry budget, explicit delivery status and stoppable callers. | 10 transport unit tests plus live Kafka 2/2 |
+| DEFECT-6 | Idle `pg.Pool` errors could terminate processes; new connections could wait for the OS TCP timeout, while a claimed service-outbox row stayed leased. | Always observe pool errors; bound new connections to 5 s; retain fenced claims in a recovery queue and reschedule immediately when PostgreSQL returns. | storage unit tests, focused outage PASS, full outage PASS with zero app restarts |
+| TEST-1 | Live Kafka round-trip published before the new consumer group settled. | Await subscription and the documented rebalance settle window, then publish; always unsubscribe. | live Kafka 2/2 |
 
-## 7. Remaining limitations
+## 5. Remaining boundary
 
-_(filled below)_
+This is a single-broker/single-PostgreSQL developer contour. Kafka/PostgreSQL
+HA and backup/restore, TLS/SASL, application authn/authz, production secret
+management, network policy, autoscaling, SLOs and observability backends remain
+outside this acceptance and are tracked in `docs/production-readiness/PLAN.md`.
 
-## 8. Evidence artifacts
+GitHub and npm publication are separate release gates and are not claimed by
+this Kubernetes report.
 
-Raw evidence directory: `test-shop/.artifacts/k8s/` (per-run subfolders:
-`*-deploy-pass`, `*-business-pass`, `*-resilience-pass`, plus `manual` collect).
-Each contains environment.json, helm status/values/manifest, inventory.yaml,
-events, per-pod logs+describe, and PostgreSQL snapshots (processes, operations,
-outbox, service ledgers).
-
-## 9. Operating the running contour
+## 6. Operating the contour
 
 ```bash
-# state
 kubectl get all -n processengine-test-shop
-# logs
-kubectl logs -n processengine-test-shop deploy/test-shop-shop-host -f
-# re-run acceptance (contour stays up)
 npm run k8s:test
 npm run k8s:resilience
 npm run k8s:collect
 ```
 
-The contour is intentionally left running (no `k8s:down`).
+The Kubernetes contour is intentionally left running. Compose is stopped.

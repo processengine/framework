@@ -5,15 +5,13 @@ Last verified: `2026-07-18`
 ## Purpose and current goal
 
 - **Purpose**: ProcessEngine is a framework for durable, deterministic execution
-  of long-running domain business processes. It separates process control logic
-  and execution guarantees from domain service logic. See canonical model in
+  of long-running domain business processes. The canonical model is
   `processengine/docs/PROCESSENGINE_CANON.md`.
-- **Current milestone (PE-M1)**: bring the milestone to a *verified* local Docker
-  Desktop Kubernetes contour, publish sources (GitHub) and the three framework
-  npm packages, and produce a production-readiness plan. Contract: `scam/TASK.md`.
-- **Observable result**: real contour running on `docker-desktop` with all
-  deterministic/business/resilience gates PASS or honestly FAIL/BLOCKED, plus
-  published artifacts and reports.
+- **Current milestone (PE-M1)**: publish the already accepted source to GitHub,
+  publish the three framework packages, verify a registry-based consumer, and
+  create tag `v0.1.0`. Contract: `scam/TASK.md`.
+- **Acceptance state**: all local deterministic, package, Compose, Kubernetes,
+  resilience, and live SPI gates pass. GitHub/npm publication is pending.
 
 ## System map and ownership
 
@@ -24,28 +22,30 @@ Last verified: `2026-07-18`
 | `@processengine/storage-postgres` | Durable PostgreSQL storage adapter + migrations | yes (storage SPI) | `processengine/packages/storage-postgres` |
 | `test-shop` contracts/host-adapter/service-kit | Demo consumer glue over public package APIs | no (consumer) | `test-shop/packages/*` |
 | `shop-host` | Checkout host: starts processes, HTTP API | no | `test-shop/apps/shop-host` |
-| `shop-warehouse` | Reservation domain service (worker) | no | `test-shop/apps/shop-warehouse` |
-| `shop-payment` | Payment domain service (worker) | no | `test-shop/apps/shop-payment` |
+| `shop-warehouse` | Reservation domain service | no | `test-shop/apps/shop-warehouse` |
+| `shop-payment` | Payment domain service | no | `test-shop/apps/shop-payment` |
 | Infra | Kafka 4.3.1 KRaft, PostgreSQL 16.8, Helm chart | no | `test-shop/deploy/helm/test-shop` |
 
-`test-shop` consumes the framework only through packed `.tgz` artifacts staged in
-`test-shop/.framework/` — never through neighbouring source paths.
+`test-shop` consumes the framework through packed `.tgz` artifacts staged in
+`test-shop/.framework/`; it does not import neighbouring framework source.
 
-## Current compatible baseline
+## Accepted baseline
 
-- Framework + all three packages: version `0.1.0`.
-- Tarballs staged (matching bytes) in `processengine/.packages/` and
-  `test-shop/.framework/`: conductor 45391B, storage-postgres 16008B,
-  transport-kafka 13230B (pre-license-change bytes; re-packed after Apache-2.0).
-- Full baseline snapshot: `scam/WORKSPACE_BASELINE.json`.
+- Framework packages: version `0.1.0`.
+- Runtime-accepted source commit:
+  `6956299de7da03d8074530f0856339e0915c8146`.
+- Exact application image content tag: `sha-d3eb3338ca20f71f`.
+- Tarballs were regenerated, staged in both package locations, and verified by
+  package and consumer smoke tests.
+- Baseline inventory: `scam/WORKSPACE_BASELINE.json`.
 
 ## Standard commands
 
 | Purpose | Command | Required environment |
 | --- | --- | --- |
-| bootstrap | `npm run bootstrap` | Node ≥22 |
-| deterministic gate | `npm run check` | Node ≥22 |
-| pack framework | `npm run pack` | Node ≥22 |
+| bootstrap | `npm run bootstrap` | Node >=22 |
+| deterministic gate | `npm run check` | Node >=22 |
+| pack framework | `npm run pack` | Node >=22 |
 | k8s doctor | `npm run k8s:doctor` | docker-desktop k8s |
 | k8s deploy | `npm run k8s:deploy` | docker-desktop k8s |
 | k8s business test | `npm run k8s:test` | deployed contour |
@@ -55,33 +55,46 @@ Last verified: `2026-07-18`
 
 ## Active decisions and contracts
 
-- Delivery is **at-least-once + idempotent processing** → logical exactly-once
-  effect. Never labelled physical exactly-once. (canon §2.9)
-- Fixed architecture (this milestone): Apache Kafka KRaft only; test-shop uses
-  packed npm artifacts; DSL/state model frozen absent a proven defect.
-- License: **Apache-2.0** applied to all three published packages (was UNLICENSED).
+- Delivery semantics are **at-least-once + idempotent processing**, producing a
+  logical exactly-once domain effect; physical exactly-once is not claimed.
+- This milestone keeps Apache Kafka KRaft, the canonical DSL/state model, and
+  package boundaries intact.
+- Package manifests and lockfiles currently carry `Apache-2.0`. Confirmation of
+  the license-owner decision is still required immediately before npm publish.
 
-## Current state
+## Verified state
 
-- Confirmed: framework `check` 48 passed / 8 skipped (live suites); test-shop
-  `check` 37 passed. (`npm run bootstrap`, 2026-07-18, exit 0.)
-- In progress: Docker Desktop Kubernetes deploy + live acceptance + resilience.
-- Not yet done: npm/GitHub publication, reports, production-readiness plan.
+- Framework deterministic gate: `57` passed, `8` live tests skipped.
+- Test-shop deterministic gate: `42` passed.
+- Compose business acceptance: `16/16` passed.
+- Kubernetes business acceptance: `16/16` passed.
+- Kubernetes resilience: `8/8` passed, including real Kafka StatefulSet and
+  PostgreSQL StatefulSet outages.
+- Live PostgreSQL SPI: `6/6` passed; live Kafka SPI: `2/2` passed.
+- Kubernetes remains running in namespace `processengine-test-shop`; Compose is
+  stopped with volumes retained.
 
-## Known constraints and risks
+Primary evidence directories:
 
-- `CONSTRAINT`: local host Node is 20.19.0; Node 22.23.1 provided via nvm. Project
-  `engines`/lockfiles unchanged.
-- `RISK`: `@processengine` npm scope and `v0.1.0` availability/auth unknown until
-  checked → may BLOCK publication.
-- `UNCERTAINTY`: live resilience timing under Docker Desktop.
+- `test-shop/.artifacts/k8s/2026-07-18T19-22-15.3NZ-local-gates-pass/`
+- `test-shop/.artifacts/k8s/2026-07-18T19-11-45.201Z-deploy-pass/`
+- `test-shop/.artifacts/k8s/2026-07-18T19-15-23.099Z-business-pass/`
+- `test-shop/.artifacts/k8s/2026-07-18T19-19-07.805Z-resilience-pass/`
+- `test-shop/.artifacts/k8s/2026-07-18T19-19-52.3NZ-live-conformance-pass/`
 
-## Active task and next milestone
+## Known constraints and publication risks
+
+- The host shell uses Node `20.19`; package engines require Node >=22. App and
+  live conformance execution used Node `22.13.0` containers. The host's
+  `EBADENGINE` warning did not change manifests or lockfiles.
+- npm authentication, ownership of the `@processengine` scope, and availability
+  of version `0.1.0` remain external publication gates until checked.
+- If registry publication succeeds, `test-shop` must be switched to registry
+  versions and re-smoked before tag `v0.1.0` is created.
+
+## Active task and next result
 
 - Task Contract: `scam/TASK.md`.
-- Next single result: green Docker Desktop Kubernetes deploy with ≥2 ready
-  replicas per app and passing probes.
-
-## Recent work records
-
-- `PE-M1` → `scam/work-records/PE-M1.md` (created before DONE).
+- Work record: `scam/work-records/PE-M1.md`.
+- Next result: GitHub `main` publication followed by the npm prepublication
+  gate. npm publish itself waits for the recorded license-owner confirmation.

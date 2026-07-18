@@ -1,74 +1,90 @@
 # Work Record: PE-M1 — Local Kubernetes contour to verified release 0.1.0
 
 Date: `2026-07-18`
-Status: `IN PROGRESS`
+Status: `ACCEPTANCE PASS — PUBLICATION PENDING`
 
 ## Task Contract
 
-See `scam/TASK.md`. Outcome: verified Docker Desktop Kubernetes contour +
-GitHub/npm publication + production-readiness plan. Acceptance frozen by the task
-prompt.
+See `scam/TASK.md`. The local contour and all executable acceptance gates are
+complete. GitHub/npm publication and the release tag are not yet complete.
 
 ## Starting baseline
 
-See `scam/WORKSPACE_BASELINE.json`. Framework + all packages at `0.1.0`;
-`test-shop` consumes framework via staged `.tgz`. Not a git repo at start.
+See `scam/WORKSPACE_BASELINE.json`. The framework packages started at `0.1.0`,
+`test-shop` consumed staged `.tgz` files, and the workspace was not a git
+repository. A recoverable checkpoint was created before changes.
 
-## Problem and prior behavior
+## Confirmed defects and corrections
 
-`RELEASE_STATUS.md` claimed all static gates green but the live Docker Desktop
-Kubernetes business/resilience gates were NOT VERIFIED (docker/kubectl/helm were
-absent in the previous build environment). This task performs the first real
-live verification and publication.
-
-## Changes
-
-| Component/file | Change | Reason |
+| ID | Confirmed behavior | Correction |
 | --- | --- | --- |
-| `test-shop/Dockerfile` | Build stage: `chown -R node:node /app` + `USER node` **before** `COPY`, so the WORKDIR is node-owned | DEFECT-1: `npm ci` failed with `EACCES mkdir /app/test-shop/node_modules` because WORKDIR was root-owned while running as `USER node`. Latent because prior env had no docker. |
-| `test-shop/deploy/helm/test-shop/templates/applications.yaml` | Quoted the `FLOW_FILES` env value (two comma-separated flow paths) | DEFECT-2: unquoted comma in a YAML flow-mapping `{name,value}` was parsed as a map separator, creating a bogus field that Helm 4 server-side apply rejected. |
-| `test-shop/scripts/resilience.mjs` | `waitForOutboxAttempt`: accept `attempt>=2` OR (`PENDING && attempt>=1`); deadline 60s→120s | DEFECT-3: flaky oracle. Framework durable-outbox behavior is correct (reproduced: row cycled CLAIMED attempt 1→10 incl. second-replica reclaim, drained to PUBLISHED / process COMPLETED on Kafka recovery); the oracle just missed the ~1s PENDING sub-window. Not a check weakening — `attempt>=2` is strictly stronger evidence. |
-| `processengine/packages/transport-kafka/src/kafka-transport.ts` (+ test) | Bound `publish()` with `publishTimeoutMs` (default 15s, < outbox lease) via `Promise.race`; a hung send now rejects so Conductor reschedules | DEFECT-5: `producer.send()` to an unreachable broker sometimes **hangs** (stayed CLAIMED attempt=1) rather than failing at connectionTimeout, so the durable outbox couldn't reschedule and the resilience `outbox-initiator-crash` oracle timed out even though the framework guarantee held (row later PUBLISHED, process COMPLETED rev=4 exactly-once). Fix realizes the transport's own documented intent ("one publish() bounded by the outbox lease") and makes outage handling deterministic. Framework check 48→49 tests. |
-| `test-shop/config/operations.json` (payment.authorize `completionTimeoutMs` 60000→180000) + `values.yaml` (`terminationGracePeriodSeconds` 20→5) | DEFECT-4: rolling-update scenario (`artifactActivationRollingUpdate`) failed — the v1 barrier process held at `payment.authorize` timed out at exactly 60s mid-rollout. Root cause: the full 3-deployment rolling helm upgrade takes >60s here because each new pod's readiness waits on a **Kafka consumer-group rebalance** (inherent to consumer groups), and the scenario deliberately withholds the payment completion across the whole rollout. grace 20→5 (beneficial, safe by design) did not change the 60s outcome, confirming grace was not the bottleneck. Actual fix: widen the withheld-completion window to 180s so it outlasts a rebalance-slowed rollout. Only the business `payment-timeout` scenario runs longer; no assertion weakened; pinning itself was already correct (flow stayed 1.0.0). |
+| DEFECT-1 | Docker build ran `npm ci` as `node` in a root-owned work directory and failed with `EACCES`. | Made the copied build tree node-owned before dependency installation. |
+| DEFECT-2 | An unquoted comma-separated Helm environment value produced an invalid flow mapping. | Rendered the value as valid quoted YAML. |
+| DEFECT-3 | The resilience script did not consistently forward scenario filters and its outage oracle inferred retries from an outbox attempt counter. | Forwarded filters, used real StatefulSet stop/restore observations, and asserted durable recovery without treating an attempt count as proof. |
+| DEFECT-4 | A payment handler awaited publication of its own completion; flow activation also changed a shared ConfigMap and restarted unrelated workers. | Committed the domain effect immediately, deferred selected completion publications through the service outbox, scoped active-flow configuration to the host, and split host-only artifact activation from full-contour rolling replacement. The operation timeout remains `60000ms`; pod grace remains `20s`. |
+| DEFECT-5 | A caller-side Kafka timeout could return while an unbounded raw send continued; parallel callers could create ambiguous retry outcomes. | Added one bounded single-flight publication path, explicit attempted/unknown outcome errors, envelope coalescing, late-result handling, and stop-time caller cancellation. |
+| DEFECT-6 | PostgreSQL pool errors could be unhandled, connection attempts could outlive the acceptance deadline, and fenced service-outbox claims waited for lease expiry after recovery. | Added a pool error handler, a public bounded connection timeout, and an in-memory recovery queue that reschedules known fenced claims after the database returns. |
+| TEST-1 | The live Kafka roundtrip published immediately after starting an unawaited subscription, racing group assignment. | Awaited subscription, allowed group assignment to settle, and unsubscribed explicitly. |
 
-## Resulting behavior and contracts
+## Public contract impact
 
-- Docker image build for all three app targets now completes (focused
-  `docker build --target shop-host` exit 0).
-- No public contract, DSL, or state-model change.
+The changes are additive:
 
-## Decisions
+- Kafka exposes bounded-publication outcome errors and publication timeout
+  configuration.
+- PostgreSQL storage exposes `connectionTimeoutMs` and `onPoolError` options.
+- Service-kit exposes the corresponding connection timeout and a publication
+  decision hook used by the demo service outbox.
 
-- Toolchain: host Node 20.19.0 < required 22; used nvm Node 22.23.1 without
-  changing `engines`/lockfiles (per prompt toolchain rules).
-- Pre-pulled `docker/dockerfile:1.7`, `node:22.13.0-bookworm-slim`,
-  `postgres:16.8-alpine`, `apache/kafka:4.3.1` after a BuildKit registry
-  `DeadlineExceeded` timeout (transient infra, not a code defect).
+The canonical DSL and process state model were not changed.
 
 ## Verification
 
-| Command/scenario | Environment | Result | Evidence |
-| --- | --- | --- | --- |
-| `npm run bootstrap` | Node 22 | PASS | framework 48 pass/8 skip, shop 37 pass (scratchpad/bootstrap.log) |
-| `npm run k8s:doctor` | docker-desktop | PASS | "Doctor passed: context=docker-desktop" |
-| `docker build --target shop-host` (probe) | docker | PASS | exit 0 after DEFECT-1 fix |
-| `npm run k8s:deploy` | docker-desktop | IN PROGRESS | deploy3.log |
-| `npm run check` | Node 22 | PASS | framework 48/8skip, shop 37 (check.log) |
-| `npm run k8s:deploy` (×3 incl. re-deploy) | docker-desktop | PASS | helm rev 3 deployed; 2/2 each app; idempotent upgrade proven |
-| `npm run k8s:test` | contour | PASS | gate=business-acceptance PASS, 16/16 scenarios (k8stest.log) |
-| repro: durable outbox under Kafka outage | contour | PASS (manual) | outbox attempt 1→10, 2nd-replica reclaim, drained→COMPLETED rev=4 on recovery (repro.log) |
-| `npm run k8s:resilience` | contour | IN PROGRESS (after DEFECT-3 fix + re-deploy) | resilience3.log |
+Runtime-accepted source commit:
+`6956299de7da03d8074530f0856339e0915c8146`; exact image tag:
+`sha-d3eb3338ca20f71f`.
 
-## Release or deployment
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Framework deterministic/package | PASS: 57 passed, 8 live skipped | `test-shop/.artifacts/k8s/2026-07-18T19-22-15.3NZ-local-gates-pass/` |
+| Test-shop deterministic | PASS: 42 passed | same local-gates directory |
+| Compose business | PASS: 16/16 | same local-gates directory |
+| Helm deploy and exact workload images | PASS: revision 31, all app replicas Ready | `test-shop/.artifacts/k8s/2026-07-18T19-11-45.201Z-deploy-pass/` |
+| Kubernetes business | PASS: 16/16 | `test-shop/.artifacts/k8s/2026-07-18T19-15-23.099Z-business-pass/` |
+| Kubernetes resilience | PASS: 8/8 | `test-shop/.artifacts/k8s/2026-07-18T19-19-07.805Z-resilience-pass/` |
+| Live PostgreSQL SPI | PASS: 6/6 | `test-shop/.artifacts/k8s/2026-07-18T19-19-52.3NZ-live-conformance-pass/` |
+| Live Kafka SPI | PASS: 2/2 | same live-conformance directory |
 
-- `NOT PERFORMED` yet (GitHub/npm pending live acceptance).
+The PostgreSQL recovery fix was additionally isolated by a focused successful
+run in `test-shop/.artifacts/k8s/2026-07-18T19-08-07.550Z-resilience-pass/`.
 
-## Remaining state
+## Resilience observations
 
-- `FOLLOW_UP`: prior claim "Docker build sequence passes" in RELEASE_STATUS.md
-  was not a real docker build; corrected here.
-- `UNCERTAINTY`: live resilience timing under Docker Desktop.
+- Host and worker failures completed through other instances without duplicate
+  domain effects.
+- Artifact activation replaced only both host pods; warehouse and payment pods
+  stayed unchanged. The separate full-contour scenario replaced all six app
+  pods.
+- Kafka and PostgreSQL outages scaled their owning StatefulSets to zero,
+  observed no remaining pods, restored them, and completed the original process.
+- During the 20-second PostgreSQL outage, all application restart counters
+  remained zero.
+- v1 instances stayed pinned while newly started work used v2.
 
-## Final references
+## Release/deployment state
 
-- To be filled at DONE (commits, tag, npm versions, evidence dir).
+- Kubernetes context `docker-desktop`, namespace `processengine-test-shop`, and
+  Helm release `test-shop` remain running.
+- Compose is stopped; its volumes were retained.
+- GitHub push, npm publication, registry-consumer verification, and annotated
+  tag `v0.1.0` have not yet been performed.
+- Package metadata is `Apache-2.0`; confirmation of the license-owner decision
+  is pending immediately before npm publish.
+
+## Remaining publication sequence
+
+1. Publish and verify GitHub `main` with no generated artifacts or secrets.
+2. Check npm authentication, scope ownership, and `0.1.0` availability.
+3. Obtain the required license-owner confirmation and publish all three packages.
+4. Clean-install the registry packages, repoint and re-smoke `test-shop`.
+5. Create and push annotated tag `v0.1.0` only after registry verification.

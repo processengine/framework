@@ -52,23 +52,23 @@ contour is left running.
 
 ## Acceptance — frozen (defined by the task prompt)
 
-- [ ] Contour deployed on `docker-desktop`: namespace, Kafka KRaft, Postgres+PVC,
+- [x] Contour deployed on `docker-desktop`: namespace, Kafka KRaft, Postgres+PVC,
       migrations applied, topics created, ≥2 ready replicas per app, probes green,
       no CrashLoop/unexpected Pending, checkout accepted, data survives pod restart,
       re-deploy is a safe upgrade.
-- [ ] `npm run check` PASS (deterministic).
-- [ ] `npm run k8s:test` business scenarios PASS (all 16 terminal states, exact
+- [x] `npm run check` PASS (deterministic).
+- [x] `npm run k8s:test` business scenarios PASS (all 16 terminal states, exact
       terminal payloads, duplicate/idempotency/anomaly matrix, flow v1→v2).
-- [ ] `npm run k8s:resilience` PASS (multi-host, pod-kill continuation, lease/
+- [x] `npm run k8s:resilience` PASS (multi-host, pod-kill continuation, lease/
       fencing, outbox/inbox, Kafka/PG outage recovery, rolling v1→v2, data durability).
-- [ ] Evidence collected under `test-shop/.artifacts/k8s/**`; reports written.
+- [x] Evidence collected under `test-shop/.artifacts/k8s/**`; reports written.
 - [ ] GitHub `main` push == local commit; sources/docs/helm/migrations included,
       no secrets/node_modules/dist.
 - [ ] Three packages published to npm `@processengine@0.1.0`, verified by clean
       install; `test-shop` repointed to published versions and re-smoked.
 - [ ] Annotated tag `v0.1.0` pushed only after npm publish succeeds.
-- [ ] `docs/production-readiness/PLAN.md` + P0/P1 SCAM task files exist.
-- [ ] Evidence: the named commands complete with exit code 0.
+- [x] `docs/production-readiness/PLAN.md` + P0/P1 SCAM task files exist.
+- [x] Evidence: the local acceptance commands complete with exit code 0.
 
 ## Owning gate
 
@@ -86,12 +86,32 @@ this project's own namespace/resources/images/volumes.
 
 ## Assumptions and risks
 
-- `ASSUMPTION`: local Node <22, resolved by using nvm Node 22.23.1; project
-  `engines`/lockfiles unchanged.
+- `CONSTRAINT`: host Node is 20.19; Node 22.13.0 containers were used for app
+  and live SPI execution. Project `engines`/lockfiles remain unchanged.
 - `RISK`: `@processengine` npm scope / `v0.1.0` name may be taken or require
   auth → BLOCKED pending user, recorded honestly.
-- `RISK`: resilience gate depends on real timing under Docker Desktop; flakes
-  handled by fixing root cause, not weakening checks.
+- `RISK`: package metadata says `Apache-2.0`, but the license-owner decision
+  still requires direct confirmation immediately before npm publish.
+
+## Verified acceptance evidence
+
+- Runtime source commit: `6956299de7da03d8074530f0856339e0915c8146`.
+- Image content tag: `sha-d3eb3338ca20f71f`.
+- Deterministic/package/Compose:
+  `test-shop/.artifacts/k8s/2026-07-18T19-22-15.3NZ-local-gates-pass/`.
+- Kubernetes deploy/business/resilience:
+  `2026-07-18T19-11-45.201Z-deploy-pass`,
+  `2026-07-18T19-15-23.099Z-business-pass`, and
+  `2026-07-18T19-19-07.805Z-resilience-pass` under
+  `test-shop/.artifacts/k8s/`.
+- Live PostgreSQL/Kafka SPI:
+  `test-shop/.artifacts/k8s/2026-07-18T19-19-52.3NZ-live-conformance-pass/`.
+
+## Publication state
+
+Local acceptance is complete. GitHub `main`, npm packages, registry-consumer
+verification, and tag `v0.1.0` remain unchecked until those external actions
+are completed and independently verified.
 
 ## Stop conditions
 

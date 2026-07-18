@@ -2,62 +2,62 @@
 
 Date: 2026-07-18
 
-## Included
+Status: **LOCAL ACCEPTANCE PASS — PUBLICATION PENDING**
 
-- `processengine/`: framework monorepo with three independently packed public
-  npm packages;
-- `test-shop/`: standalone external consumer with `shop-host`,
-  `shop-warehouse`, `shop-payment`, explicit flow v1/v2, Apache Kafka KRaft,
-  PostgreSQL, Compose, Helm and Docker Desktop Kubernetes gates;
-- current framework tarballs are staged in both `processengine/.packages/` and
-  `test-shop/.framework/` with matching bytes.
+## Accepted build
 
-## Verified in this environment
+- runtime commit: `6956299de7da03d8074530f0856339e0915c8146`;
+- application content tag: `sha-d3eb3338ca20f71f`;
+- three public packages: `@processengine/conductor`,
+  `@processengine/transport-kafka`, `@processengine/storage-postgres`, all
+  version 0.1.0;
+- test-shop consumes staged package tarballs and runs host, warehouse and
+  payment against Kafka KRaft and PostgreSQL.
 
-- framework build, strict typecheck and deterministic tests: **48 passed**;
-- environment-gated real PostgreSQL/Kafka tests: **8 skipped** because those
-  services are not available here;
-- clean consumer installation and public package import smoke: **passed**;
-- test-shop build, strict typecheck and deterministic tests after clean
-  tarball installation: **37 passed**;
-- every one of the 16 checkout `end` steps has a deterministic transition
-  scenario and exact terminal-result assertion;
-- all repository `.mjs` scripts pass Node syntax checking and all JSON files
-  parse;
-- the Docker build-stage sequence (`npm ci`, build, production prune and
-  runtime public imports) passes in a clean temporary copy.
+## Verified gates
 
-## Deliberate failure coverage
+- `npm run check`: exit 0; framework 57 passed / 8 live skipped, test-shop
+  42 passed;
+- clean package install and public-import smoke: PASS;
+- Compose business acceptance: 16/16 PASS; Compose stopped afterward;
+- Kubernetes deploy/image identity: PASS; all six Ready app pods matched
+  `sha-d3eb3338ca20f71f`;
+- Kubernetes business acceptance: 16/16 PASS;
+- Kubernetes resilience: 8/8 PASS, including actual Kafka/PostgreSQL
+  scale-to-zero outages, host/worker crash recovery, host-only artifact
+  activation and full three-Deployment rollout;
+- live PostgreSQL SPI: 6/6 PASS;
+- live Kafka SPI: 2/2 PASS.
 
-The executable contracts include duplicate commands; a service-originated
-duplicate completion with the same `requestId` and a fresh `messageId`;
-conflicting, foreign-source, unknown-request, malformed and late completions;
-completion-versus-timeout races; dispatch exhaustion; lease reclaim/fencing;
-host and worker crash recovery; compound payment and stock compensation
-failures; Kafka/PostgreSQL outages; and v1-to-v2 rolling activation.
+Evidence directories:
 
-The duplicate-service fixture records its second publication only after Kafka
-acknowledges it. Live acceptance then requires an unchanged process revision,
-unchanged results and exactly one domain effect per operation request.
+- `test-shop/.artifacts/k8s/2026-07-18T19-22-15.3NZ-local-gates-pass/`;
+- `test-shop/.artifacts/k8s/2026-07-18T19-11-45.201Z-deploy-pass/`;
+- `test-shop/.artifacts/k8s/2026-07-18T19-15-23.099Z-business-pass/`;
+- `test-shop/.artifacts/k8s/2026-07-18T19-19-07.805Z-resilience-pass/`;
+- `test-shop/.artifacts/k8s/2026-07-18T19-19-52.3NZ-live-conformance-pass/`.
 
-## Pending live verification
+The host's Node 20.19.0 emitted engine warnings because packages declare Node
+>=22. Application containers and the live SPI pod ran Node 22.13.0.
 
-`docker`, `kubectl` and `helm` are absent from this build environment. No live
-Docker Desktop or Kubernetes PASS is claimed. On the target workstation run:
+## Semantics verified
 
-```bash
-npm run bootstrap
-npm run k8s:doctor
-npm run k8s:deploy
-npm run k8s:test
-npm run k8s:resilience
-```
+Physical delivery remains at-least-once. Stable request IDs, fenced leases,
+transactional domain ledgers and first-completion-wins processing produced one
+domain effect per operation under duplicate delivery and crash/outage recovery.
 
-The milestone becomes verified only after those gates pass and evidence exists
-under `test-shop/.artifacts/k8s/` as required by `DOD.md`.
+Flow activation changes only shop-host. Existing v1 processes remain pinned to
+the immutable v1 artifact; new processes use active v2 and return APPROVED_V2.
+A separate full-contour rollout replaces all six app pods while an unfinished
+v1 process survives.
 
-## Publication decision
+## License and publication
 
-Package layout and `publishConfig` are ready for scoped public npm packages.
-The source is intentionally `UNLICENSED`; select a license before publishing or
-redistributing the packages.
+Current package manifests, generated lock metadata and tarballs declare
+Apache-2.0 and include LICENSE; no current package metadata contains
+`UNLICENSED`. Owner confirmation of that licensing decision has not yet been
+recorded and will be requested immediately before npm publication.
+
+GitHub push, npm publication, registry reinstall verification and annotated tag
+`v0.1.0` have not yet been performed and are not claimed here. Kubernetes is
+left running on `docker-desktop`; Compose is stopped.

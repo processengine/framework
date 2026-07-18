@@ -1,66 +1,98 @@
 # Definition of done
 
-The contour is accepted by executable oracles at three levels. Static success
-does not imply that Docker Desktop or Kubernetes was exercised.
+The contour is accepted by executable oracles at deterministic/package,
+business, resilience, and live-SPI levels. The runtime-accepted source commit is
+`6956299de7da03d8074530f0856339e0915c8146`; its exact image content tag is
+`sha-d3eb3338ca20f71f`.
 
 ## Packaged and deterministic gate
 
-| Requirement | Oracle | Result in this build environment |
-|---|---|---|
-| Host consumes only the three public ProcessEngine packages | tarball install and import/package smoke | pass |
-| App inventory is `shop-host`, `shop-warehouse`, `shop-payment` | workspace, image and Helm inventory tests | pass |
-| Explicit immutable flow v1 and v2 compile | public compiler/registry contract tests | pass |
-| Every one of the 16 v1 `end` steps is reachable by a deterministic scenario | checkout terminal transition matrix | pass |
-| Every terminal payload exactly equals its declared stored result | transition matrix and live acceptance oracle | static pass; live pending |
-| Strict TypeScript build/typecheck and all focused tests | `npm run check` | pass |
-| Node deployment scripts and JSON artifacts parse | release syntax gate | pass |
-| Helm chart renders and lints | `npm run helm:render`, `npm run helm:lint` | pending: Helm unavailable here |
+| Requirement | Oracle | Verified result |
+| --- | --- | --- |
+| Host consumes only the three public ProcessEngine packages | tarball install and import/package smoke | PASS |
+| App inventory is `shop-host`, `shop-warehouse`, `shop-payment` | workspace, image, and Helm inventory tests | PASS |
+| Explicit immutable flow v1 and v2 compile | public compiler/registry contract tests | PASS |
+| Every one of the 16 v1 terminal steps is reachable | checkout terminal transition matrix | PASS |
+| Every terminal payload equals its declared stored result | deterministic and live acceptance oracles | PASS |
+| Strict build/typecheck and focused tests | framework/test-shop `npm run check` | PASS: framework 57 + 8 live skipped; test-shop 42 |
+| Node deployment scripts and JSON artifacts parse | release syntax gate | PASS |
+| Helm chart renders and lints | `npm run helm:render`, `npm run helm:lint` | PASS |
 
-The framework sibling remains the owning gate for atomic storage transitions,
-Kafka handler redelivery/heartbeat, bounded publication, completion races,
-dispatch exhaustion, timeout fencing and startup lifecycle.
+The framework remains the owning gate for atomic storage transitions, Kafka
+redelivery/heartbeat, bounded publication, completion races, dispatch
+exhaustion, timeout fencing, and startup lifecycle.
 
 ## Live business gate
 
-Both `npm run compose:test` and `npm run k8s:test` execute
-[`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md) through the public HTTP APIs. The
-gate covers happy checkout, every e-commerce branch represented by a fault
-fixture, compound payment/stock compensation failures, timeout, concurrent
-idempotent starts, duplicate commands and all completion anomalies.
+Both Compose and Kubernetes executed `docs/ACCEPTANCE.md` through public HTTP
+APIs. Each passed all `16/16` scenarios, including happy checkout, every fault
+branch, compound compensation failures, timeout, concurrent idempotent starts,
+duplicate commands, and completion anomalies.
 
-The service-originated duplicate-response scenario requires all of these facts:
+The duplicate-response oracle observed a second completion with the same
+`requestId` and a fresh `messageId`, broker acknowledgement recorded in durable
+acceptance control, publication of the normal service-outbox completion, and no
+change to the process result or either domain-effect ledger.
 
-- payment publishes a second completion with the same `requestId` and a fresh
-  `messageId`;
-- the broker acknowledges that publication and its message ID is stored in a
-  durable acceptance-control row;
-- the normal completion remains in the service outbox and is published;
-- the process revision/results and both domain effect ledgers stay unchanged
-  after the duplicate settles.
+Evidence:
 
-Current live result: **not executed here** because Docker is unavailable.
+- Compose and deterministic gates:
+  `test-shop/.artifacts/k8s/2026-07-18T19-22-15.3NZ-local-gates-pass/`.
+- Kubernetes business gate:
+  `test-shop/.artifacts/k8s/2026-07-18T19-15-23.099Z-business-pass/`.
 
 ## Live Kubernetes resilience gate
 
-`npm run k8s:resilience` executes every scenario in
-[`docs/RESILIENCE.md`](docs/RESILIENCE.md): multiple replicas, initiating-host
-loss, durable-outbox recovery by another host, worker crash after its atomic
-domain commit and redelivery to another service instance, v1-to-v2 rolling
-activation, Kafka outage, PostgreSQL outage, duplicate/late completion and
-final database/ledger assertions.
+`npm run k8s:resilience` passed `8/8` scenarios:
 
-Current live result: **not executed here** because Docker, kubectl and Helm are
-unavailable. No Kubernetes PASS is claimed.
+1. initiating-instance crash;
+2. durable initiator outbox with a real Kafka StatefulSet outage;
+3. operation-worker crash after its durable domain commit;
+4. host-only artifact activation;
+5. full-contour rolling update;
+6. duplicate/late completion;
+7. Kafka outage recovery;
+8. PostgreSQL outage recovery.
+
+The outage scenarios observed the target StatefulSet at zero desired/ready
+replicas with no remaining pods before restoration. Artifact activation
+replaced only host pods; its separate full-contour scenario replaced all six
+application pods. v1 work remained pinned, new work used v2, and final ledger
+checks showed one logical domain effect. PostgreSQL recovery completed with all
+six application restart counts unchanged.
+
+Evidence:
+`test-shop/.artifacts/k8s/2026-07-18T19-19-07.805Z-resilience-pass/`.
+
+## Live SPI conformance
+
+- PostgreSQL SPI: PASS `6/6`.
+- Kafka SPI: PASS `2/2`.
+
+The suites ran from an ephemeral Node `22.13.0` pod against the deployed Kafka
+listener and PostgreSQL secret. The pod was removed after the run. Evidence:
+`test-shop/.artifacts/k8s/2026-07-18T19-19-52.3NZ-live-conformance-pass/`.
+
+## Image/source identity and contour state
+
+- The image content tag hashes the actual build inputs; documentation/evidence
+  edits do not change it, while application/config changes do.
+- Every application Deployment and every Ready application pod used the exact
+  repository/tag asserted by the deploy gate.
+- Kubernetes context `docker-desktop`, namespace `processengine-test-shop`, and
+  Helm release `test-shop` remain running.
+- Compose is stopped with its volumes retained.
 
 ## Evidence rule
 
 A live Kubernetes run is accepted only with machine-readable results,
-Kubernetes inventory, Helm status, selected logs and PostgreSQL snapshots under
-`.artifacts/k8s/<run-id>/`. These generated files are excluded from the source
-archive.
+Kubernetes inventory, Helm status, selected logs, and PostgreSQL snapshots under
+`.artifacts/k8s/<run-id>/`. Generated evidence is excluded from source control.
 
 ## Reference-contour boundary
 
-Production Kafka/PostgreSQL HA, disaster recovery, authn/authz, TLS, secret
-management, network policy, autoscaling, SLOs and observability backends are
-deployment responsibilities beyond this local reference contour.
+Production Kafka/PostgreSQL HA, disaster recovery, authn/authz, TLS, external
+secret management, network policy, autoscaling, SLOs, and observability
+backends remain deployment responsibilities beyond this local reference
+contour. `docs/production-readiness/PLAN.md` and its P0/P1 SCAM tasks cover that
+follow-up scope.
