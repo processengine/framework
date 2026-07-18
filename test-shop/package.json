@@ -13,7 +13,6 @@
     "apps/shop-payment"
   ],
   "scripts": {
-    "framework:stage": "node scripts/stage-framework.mjs",
     "clean": "npm run clean --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run build && npm run typecheck --workspaces --if-present",
@@ -34,9 +33,9 @@
     "k8s:down": "node scripts/k8s.mjs down"
   },
   "dependencies": {
-    "@processengine/conductor": "file:.framework/processengine-conductor-0.1.0.tgz",
-    "@processengine/storage-postgres": "file:.framework/processengine-storage-postgres-0.1.0.tgz",
-    "@processengine/transport-kafka": "file:.framework/processengine-transport-kafka-0.1.0.tgz"
+    "@processengine/conductor": "0.1.0",
+    "@processengine/storage-postgres": "0.1.0",
+    "@processengine/transport-kafka": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
@@ -48,4 +47,3 @@
     "node": ">=22.0.0"
   }
 }
-

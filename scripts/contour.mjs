@@ -12,20 +12,17 @@ switch (command) {
     await npm(['install', '--cache', cache('framework')], framework);
     await npm(['run', 'check'], framework);
     await npm(['run', 'check:packages'], framework);
-    await npm(['run', 'framework:stage'], shop);
     await npm(['install', '--cache', cache('shop')], shop);
     await npm(['run', 'check'], shop);
     break;
   case 'check':
     await npm(['run', 'check'], framework);
     await npm(['run', 'check:packages'], framework);
-    await npm(['run', 'framework:stage'], shop);
     await npm(['ci', '--cache', cache('shop')], shop);
     await npm(['run', 'check'], shop);
     break;
   case 'pack':
     await npm(['run', 'pack:all'], framework);
-    await npm(['run', 'framework:stage'], shop);
     break;
   default:
     throw new Error(`Unknown contour command: ${String(command)}`);

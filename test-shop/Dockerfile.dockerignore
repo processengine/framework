@@ -4,8 +4,6 @@
 !package.json
 !package-lock.json
 !tsconfig.base.json
-!.framework/
-!.framework/**
 !apps/
 !apps/**
 !packages/

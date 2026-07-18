@@ -16,7 +16,7 @@ const buildFiles = [
   'package-lock.json',
   'tsconfig.base.json',
 ];
-const buildDirectories = ['.framework', 'apps', 'packages', 'config', 'flows'];
+const buildDirectories = ['apps', 'packages', 'config', 'flows'];
 
 export async function contentTag() {
   const explicit = process.env.TEST_SHOP_IMAGE_TAG;
