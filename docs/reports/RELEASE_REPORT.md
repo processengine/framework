@@ -5,7 +5,7 @@
 - **Runtime-accepted commit**: `6956299de7da03d8074530f0856339e0915c8146`
 - **Runtime image tag**: `sha-d3eb3338ca20f71f`
 - **Package metadata license**: Apache-2.0
-- **Release state**: local acceptance PASS; GitHub/npm publication pending
+- **Release state**: local acceptance PASS; GitHub source published; npm pending
 
 ## 1. Acceptance summary
 
@@ -24,8 +24,10 @@ Full runtime detail is in `docs/reports/K8S_ACCEPTANCE_REPORT.md`.
 
 - Target: `https://github.com/processengine/framework`
 - Target branch: `main`
-- Status: **PENDING** — the accepted implementation and evidence-backed reports
-  are committed locally first; no GitHub push is claimed yet.
+- Status: **PASS** — `main` was pushed and independently read back from GitHub.
+- Initial accepted source-and-reports commit:
+  `8968afb41a7303c86a8f2a734561f2cb82ed7fb4`; local `main`, `ls-remote`, and
+  the GitHub commits API returned the same SHA after publication.
 - Annotated tag `v0.1.0`: **NOT CREATED**. It may be created only after all
   three npm packages publish and pass registry-install verification.
 
@@ -45,7 +47,7 @@ Target registry: `https://registry.npmjs.org`, public access. Required order:
 
 `test-shop` is not an npm publication target.
 
-Pre-publication checks completed:
+Local pre-publication checks completed:
 
 - versions and dependency ranges are internally consistent;
 - current manifests and lockfiles contain Apache-2.0 rather than `UNLICENSED`;

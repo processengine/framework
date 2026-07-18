@@ -7,11 +7,12 @@ Last verified: `2026-07-18`
 - **Purpose**: ProcessEngine is a framework for durable, deterministic execution
   of long-running domain business processes. The canonical model is
   `processengine/docs/PROCESSENGINE_CANON.md`.
-- **Current milestone (PE-M1)**: publish the already accepted source to GitHub,
-  publish the three framework packages, verify a registry-based consumer, and
-  create tag `v0.1.0`. Contract: `scam/TASK.md`.
+- **Current milestone (PE-M1)**: publish the three accepted framework packages,
+  verify a registry-based consumer, and create tag `v0.1.0`. Contract:
+  `scam/TASK.md`.
 - **Acceptance state**: all local deterministic, package, Compose, Kubernetes,
-  resilience, and live SPI gates pass. GitHub/npm publication is pending.
+  resilience, and live SPI gates pass. GitHub `main` is published; npm is
+  pending.
 
 ## System map and ownership
 
@@ -96,5 +97,5 @@ Primary evidence directories:
 
 - Task Contract: `scam/TASK.md`.
 - Work record: `scam/work-records/PE-M1.md`.
-- Next result: GitHub `main` publication followed by the npm prepublication
-  gate. npm publish itself waits for the recorded license-owner confirmation.
+- Next result: npm authentication/scope/version preflight. npm publish itself
+  waits for the recorded license-owner confirmation.

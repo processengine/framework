@@ -2,7 +2,7 @@
 
 Date: 2026-07-18
 
-Status: **LOCAL ACCEPTANCE PASS — PUBLICATION PENDING**
+Status: **SOURCE PUBLISHED — NPM PUBLICATION PENDING**
 
 ## Accepted build
 
@@ -58,6 +58,10 @@ Apache-2.0 and include LICENSE; no current package metadata contains
 `UNLICENSED`. Owner confirmation of that licensing decision has not yet been
 recorded and will be requested immediately before npm publication.
 
-GitHub push, npm publication, registry reinstall verification and annotated tag
-`v0.1.0` have not yet been performed and are not claimed here. Kubernetes is
-left running on `docker-desktop`; Compose is stopped.
+GitHub `main` was published to
+`https://github.com/processengine/framework`; the initial accepted
+source-and-reports push was independently verified at
+`8968afb41a7303c86a8f2a734561f2cb82ed7fb4`. npm publication, registry
+reinstall verification and annotated tag `v0.1.0` have not yet been performed
+and are not claimed here. Kubernetes is left running on `docker-desktop`;
+Compose is stopped.

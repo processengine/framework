@@ -62,7 +62,7 @@ contour is left running.
 - [x] `npm run k8s:resilience` PASS (multi-host, pod-kill continuation, lease/
       fencing, outbox/inbox, Kafka/PG outage recovery, rolling v1→v2, data durability).
 - [x] Evidence collected under `test-shop/.artifacts/k8s/**`; reports written.
-- [ ] GitHub `main` push == local commit; sources/docs/helm/migrations included,
+- [x] GitHub `main` push == local commit; sources/docs/helm/migrations included,
       no secrets/node_modules/dist.
 - [ ] Three packages published to npm `@processengine@0.1.0`, verified by clean
       install; `test-shop` repointed to published versions and re-smoked.
@@ -109,9 +109,11 @@ this project's own namespace/resources/images/volumes.
 
 ## Publication state
 
-Local acceptance is complete. GitHub `main`, npm packages, registry-consumer
-verification, and tag `v0.1.0` remain unchecked until those external actions
-are completed and independently verified.
+Local acceptance and GitHub `main` publication are complete. The initial
+accepted source-and-reports push was independently verified at
+`8968afb41a7303c86a8f2a734561f2cb82ed7fb4`. npm packages,
+registry-consumer verification, and tag `v0.1.0` remain unchecked until those
+external actions are completed and independently verified.
 
 ## Stop conditions
 

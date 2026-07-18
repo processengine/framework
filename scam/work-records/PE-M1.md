@@ -1,12 +1,13 @@
 # Work Record: PE-M1 — Local Kubernetes contour to verified release 0.1.0
 
 Date: `2026-07-18`
-Status: `ACCEPTANCE PASS — PUBLICATION PENDING`
+Status: `SOURCE PUBLISHED — NPM PUBLICATION PENDING`
 
 ## Task Contract
 
 See `scam/TASK.md`. The local contour and all executable acceptance gates are
-complete. GitHub/npm publication and the release tag are not yet complete.
+complete. GitHub `main` is published; npm publication and the release tag are
+not yet complete.
 
 ## Starting baseline
 
@@ -76,15 +77,17 @@ run in `test-shop/.artifacts/k8s/2026-07-18T19-08-07.550Z-resilience-pass/`.
 - Kubernetes context `docker-desktop`, namespace `processengine-test-shop`, and
   Helm release `test-shop` remain running.
 - Compose is stopped; its volumes were retained.
-- GitHub push, npm publication, registry-consumer verification, and annotated
-  tag `v0.1.0` have not yet been performed.
+- GitHub `main` was published and read back at
+  `8968afb41a7303c86a8f2a734561f2cb82ed7fb4` for the initial accepted
+  source-and-reports commit.
+- npm publication, registry-consumer verification, and annotated tag `v0.1.0`
+  have not yet been performed.
 - Package metadata is `Apache-2.0`; confirmation of the license-owner decision
   is pending immediately before npm publish.
 
 ## Remaining publication sequence
 
-1. Publish and verify GitHub `main` with no generated artifacts or secrets.
-2. Check npm authentication, scope ownership, and `0.1.0` availability.
-3. Obtain the required license-owner confirmation and publish all three packages.
-4. Clean-install the registry packages, repoint and re-smoke `test-shop`.
-5. Create and push annotated tag `v0.1.0` only after registry verification.
+1. Check npm authentication, scope ownership, and `0.1.0` availability.
+2. Obtain the required license-owner confirmation and publish all three packages.
+3. Clean-install the registry packages, repoint and re-smoke `test-shop`.
+4. Create and push annotated tag `v0.1.0` only after registry verification.
