@@ -26,6 +26,37 @@ maturity/scale improvements.
 
 ---
 
+## Milestone 0 — Development foundation (PE-M3, in progress)
+
+Before the production-readiness directions below, one foundation milestone makes
+the next development cycle honest and reproducible. Its ordering — which supersedes
+the older M1…M6 sequencing where they overlap — is:
+
+1. **Dual local/registry consumption contour** so local framework changes really
+   reach test-shop and Kubernetes, while a registry mode proves the published
+   release. *(done — `check:local`/`check:registry`, mode-aware deploys, source
+   manifests, tarball-derived image tags.)*
+2. **CI and preserved evidence** — fast PR gate, live PG/Kafka conformance, kind
+   k8s smoke, nightly full business/resilience. *(workflows added; real run
+   pending branch push.)*
+3. **Curated public API** (supersedes/implements **PR1.1**, **PR1.2**) and the
+   **honest operation schema profile** (informs **PR2.1**). *(done — curated
+   surfaces, API reports + drift gate, `SEMVER_POLICY.md`, bounded schema profile
+   that rejects unsupported keywords.)*
+4. **Product documentation and a tested quick start**, delivered together with the
+   contracts (feeds **PR17.1**).
+5. **Release automation / supply-chain foundation** (advances **PR14.1**,
+   **PR16.1**) — provenance publish, package metadata, governance docs. *(metadata,
+   `SECURITY.md`/`CONTRIBUTING.md`/`CODE_OF_CONDUCT.md`, ADR-002, provenance in the
+   release workflow — done; no publish performed.)*
+6. **Then** the security, observability, HA, performance and third-party developer
+   experience directions below.
+
+This milestone does **not** make ProcessEngine production-ready and does not make
+the `test-shop` Helm chart a production chart — it is a reference/developer chart.
+
+---
+
 ## Direction 1 — Public API stability & semver policy
 
 **Problem/risk**: `conductor/src/index.ts` re-exports `export *` from 11 internal
@@ -50,17 +81,20 @@ consumers. **Module**: all three packages, primarily `conductor`.
 ## Direction 2 — DSL evolution & process-artifact compatibility
 
 **Problem/risk**: Flow3 artifacts are pinned by `{id,version,digest}` (good), but
-there is no documented forward/backward compatibility contract for DSL schema
-changes, no artifact schema-version negotiation beyond the JSON schema, and no
-migration story for in-flight processes when the DSL grammar evolves.
+there is no documented forward/backward compatibility contract for grammar
+changes and no migration story for in-flight processes when the grammar evolves.
+The grammar is versioned by package semver + the flow schema `$id`; the canon
+forbids a `dsl`/`dslVersion`/`schemaVersion` field inside the business flow.
 
-- **PR2.1 (P0, M)** — DSL compatibility contract: define which flow schema changes
-  are additive vs breaking; freeze `flow.schema.json` under a schema version;
-  add a compiler compatibility test matrix (old artifact + new engine).
-  - Acceptance: engine rejects unknown-higher schema version with a canonical
-    error; a v1 artifact compiled by a newer engine yields identical execution.
-  - Tests: compiler golden tests across schema versions. Blocks stable: **yes**.
-  - Docs: `docs/dsl/COMPATIBILITY.md`.
+- **PR2.1 (P0, M)** — DSL compatibility contract: define which grammar changes are
+  additive vs breaking; version via package semver + flow schema `$id` + golden
+  fixtures (no version field in the flow); add a compiler compatibility matrix.
+  - Acceptance: an older flow compiled by the current engine yields an equivalent
+    normalized digest, or the change is declared breaking; any protocol negotiation
+    (if ever needed) lives in artifact-registry metadata, not the flow.
+  - Tests: compiler golden compatibility fixtures. Blocks stable: **yes**.
+  - Docs: `docs/dsl/COMPATIBILITY.md`; the schema profile and its versioning are
+    already documented in `processengine/docs/OPERATION_SCHEMA_PROFILE.md`.
 - **PR2.2 (P1, M)** — Artifact registry SPI guidance for versioned publication and
   pinning across rolling deploys (the test-shop proves the pattern; promote it to
   documented contract). Blocks stable: no.
@@ -117,6 +151,14 @@ the migrations Job has no explicit DB-readiness wait (observed transient
 3 partitions. Delivery/ordering guarantees under multi-partition, multi-broker,
 consumer-rebalance and partition-key choice are not documented; capacity planning
 guidance is absent.
+
+- **PR6.0 (P1, M) — measurable follow-up, do not optimize without a baseline**:
+  the Kafka transport deliberately keeps **one active `producer.send()` per
+  transport instance** so an unknown delivery result is handled correctly. This is
+  a safety trade-off with an unmeasured throughput ceiling, not a claimed scaling
+  property. Before changing it, establish throughput/latency baselines and a
+  backpressure contract, and add a test that pins the current delivery semantics.
+  Blocks stable: no. Docs: `docs/ops/KAFKA.md`, cross-link Direction 13.
 
 - **PR6.1 (P0, M)** — Document and test partitioning/ordering contract: which key
   guarantees per-process ordering, behavior under rebalance, min ISR / RF
@@ -272,15 +314,19 @@ backlog, lease storms, broker/DB outage, or version-pinning incidents.
 
 ## Direction 20 — Licensing, security policy, contribution policy & support model
 
-**Problem/risk**: Packages were `UNLICENSED` (fixed to **Apache-2.0** in this
-milestone); still missing `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
-and a stated support/LTS model.
+**Problem/risk**: Packages were `UNLICENSED` (fixed to **Apache-2.0** for the `0.x`
+line in this milestone). The **`1.0` license is deliberately not yet chosen** — it
+may be MIT, Apache-2.0, or dual-licensed by the rights holder (see
+`docs/decisions/ADR-002-licensing.md`). Production-readiness tasks must require
+consistency with *the chosen project license*, not a perpetual Apache-2.0 mandate.
 
-- **PR20.1 (P0, S)** — Governance docs: `LICENSE` (Apache-2.0) at repo root +
-  per package, `SECURITY.md` (disclosure), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
-  support/versioning statement.
-  - Acceptance: all files present; license consistent across packages.
-  - Blocks stable: **yes** (partly satisfied: Apache-2.0 already applied).
+- **PR20.1 (P0, S)** — Governance docs. *(Largely satisfied: `LICENSE` (Apache-2.0)
+  at repo root + per package, `SECURITY.md`, `CONTRIBUTING.md`,
+  `CODE_OF_CONDUCT.md`, and the support/versioning statement in
+  `processengine/docs/SEMVER_POLICY.md` are in place.)*
+  - Acceptance: all files present; license consistent across packages for the
+    current `0.x` line; the `1.0` license decision is recorded as open, not chosen.
+  - Blocks stable: **yes** (largely satisfied for `0.x`).
 
 ---
 
