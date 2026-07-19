@@ -49,26 +49,26 @@ access token are removed.
 
 ## Acceptance — frozen
 
-- [ ] `.github/workflows/publish-npm.yml` runs only for SemVer release tags,
+- [x] `.github/workflows/publish-npm.yml` runs only for SemVer release tags,
       uses a GitHub-hosted runner with Node 24 and npm >=11.5.1, grants only
       `contents: read` and `id-token: write`, and contains no npm-token secret
       reference or package cache configuration.
-- [ ] Before the first publish, the workflow verifies that the tag is a strict
+- [x] Before the first publish, the workflow verifies that the tag is a strict
       `vX.Y.Z`, all three package versions match it, the tagged commit belongs
       to `origin/main`, all package repository URLs match
       `https://github.com/processengine/framework.git`, and none of the target
       package versions already exists in npm.
-- [ ] The workflow runs the deterministic and package-smoke gates, publishes
+- [x] The workflow runs the deterministic and package-smoke gates, publishes
       conductor → transport-kafka → storage-postgres with public access, waits
       for registry visibility, then performs exact-version clean install and
       ESM import smoke checks.
-- [ ] Focused release-contract tests and `npm run check` pass in the required
+- [x] Focused release-contract tests and `npm run check` pass in the required
       Node >=22 environment.
-- [ ] `npm trust list` shows `processengine/framework` and
+- [x] `npm trust list` shows `processengine/framework` and
       `publish-npm.yml`, with direct publishing allowed, for all three packages.
-- [ ] Only after the preceding trust-list check passes, GitHub Actions no longer
+- [x] Only after the preceding trust-list check passes, GitHub Actions no longer
       has `NPM_TOKEN` and the npm project granular access token is revoked.
-- [ ] The runbook, ADR, living context/status, and Work Record describe the
+- [x] The runbook, ADR, living context/status, and Work Record describe the
       verified final state without recording credentials or transient 2FA URLs.
 
 ## Owning gate

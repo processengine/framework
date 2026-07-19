@@ -8,7 +8,7 @@ Last verified: `2026-07-19`
   of long-running domain business processes. The canonical model is
   `processengine/docs/PROCESSENGINE_CANON.md`.
 - **Current milestone (PE-M1)**: complete. Contract: `scam/TASK.md`.
-- **Active task (PE-M2)**: migrate npm publication from a long-lived project
+- **Completed task (PE-M2)**: npm publication migrated from a long-lived project
   token to GitHub Actions trusted publishing. Contract:
   `scam/tasks/PE-M2-trusted-publishing.md`.
 - **Acceptance state**: all local deterministic, package, Compose, Kubernetes,
@@ -63,10 +63,13 @@ neighbouring framework source.
   package boundaries intact.
 - Package manifests, lockfiles, and registry metadata carry `Apache-2.0`. The
   user directly confirmed the license-owner decision before publication.
+- npm publication authentication follows
+  `docs/decisions/ADR-001-npm-trusted-publishing.md`: GitHub-hosted Actions OIDC,
+  direct publish permission, and package-level denial of traditional tokens.
 
 ## Verified state
 
-- Framework deterministic gate: `57` passed, `8` live tests skipped.
+- Framework deterministic gate after PE-M2: `64` passed, `8` live tests skipped.
 - Test-shop deterministic gate: `42` passed.
 - Compose business acceptance: `16/16` passed.
 - Kubernetes business acceptance: `16/16` passed.
@@ -75,6 +78,11 @@ neighbouring framework source.
 - Live PostgreSQL SPI: `6/6` passed; live Kafka SPI: `2/2` passed.
 - Anonymous registry install/import: passed in Node 22.
 - Registry-backed Helm revision 34 and repeated business gate: `16/16` passed.
+- npm trusted-publisher readback: `3/3` packages match
+  `processengine/framework` and `publish-npm.yml` with direct publish allowed.
+- Package publishing access disallows traditional tokens for `3/3` packages;
+  GitHub Actions has no `NPM_TOKEN`, npm token inventory was verified empty, and
+  the former local registry credential was removed.
 - Kubernetes remains running in namespace `processengine-test-shop`; Compose is
   stopped with volumes retained.
 
@@ -90,17 +98,16 @@ Primary evidence directories:
 
 ## Known constraints
 
-- The host shell uses Node `20.19`; package engines require Node >=22. App and
-  live conformance execution used Node `22.13.0` containers. The host's
-  `EBADENGINE` warning did not change manifests or lockfiles.
-- The project publication credential is stored as GitHub Actions secret
-  `NPM_TOKEN`; it is not stored in the repository.
+- The default host shell uses Node `20.19`; package engines require Node >=22.
+  PE-M2 gates used Node `22.23.1`, and the publication workflow uses Node 24.
+- A real trusted OIDC publish is not yet observed because PE-M2 intentionally
+  did not change versions or create a tag. The next legitimate release is the
+  end-to-end OIDC/provenance proof.
 
 ## Current and completed work
 
-- Active Task Contract: `scam/tasks/PE-M2-trusted-publishing.md`.
-- Target result: all three packages trust the repository's OIDC publication
-  workflow; the former GitHub/npm token path is removed only after verification.
+- Completed Task Contract: `scam/tasks/PE-M2-trusted-publishing.md`.
+- Completed work record: `scam/work-records/PE-M2.md`.
 
 - Completed Task Contract: `scam/TASK.md`.
 - Completed work record: `scam/work-records/PE-M1.md`.
