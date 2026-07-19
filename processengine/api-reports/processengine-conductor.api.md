@@ -24,8 +24,6 @@ declared in `package.json` exports.
 - type `CreateProcessResult`
 - interface `DurableDispatch`
 - interface `EndStep`
-- function `evolve`
-- function `failure`
 - class `FlowDefinitionError`
 - interface `JsonObject`
 - type `JsonPrimitive`
@@ -74,18 +72,20 @@ declared in `package.json` exports.
 - interface `StepInput`
 - interface `StoredOperation`
 - type `StoredOperationStatus`
-- function `success`
 - interface `SwitchStep`
-- interface `TransitionResult`
 
 ## `@processengine/conductor/testing`
 
 - function `createMemoryConductor`
 - function `createMemoryStorage`
 - function `createMemoryTransport`
+- function `evolve`
+- function `failure`
 - class `ManualClock`
 - class `MemoryMessageTransport`
 - class `MemoryProcessStorage`
 - interface `MessageTransportConformanceOptions`
 - function `runMessageTransportConformance`
 - function `runProcessStorageConformance`
+- function `success`
+- interface `TransitionResult`
