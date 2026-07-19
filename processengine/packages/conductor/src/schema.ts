@@ -29,6 +29,17 @@ function requiredProperties(schema: JsonSchema): Set<string> {
     : []);
 }
 
+// Object keywords are meaningful only for an explicit object type (optionally
+// nullable); array `items` only for an explicit array type. Anything else is an
+// ambiguous structural union the profile does not support.
+function isObjectTypeSet(types: Set<string> | undefined): boolean {
+  return !!types && types.has('object') && [...types].every((item) => item === 'object' || item === 'null');
+}
+
+function isArrayTypeSet(types: Set<string> | undefined): boolean {
+  return !!types && types.has('array') && [...types].every((item) => item === 'array' || item === 'null');
+}
+
 // ---------------------------------------------------------------------------
 // ProcessEngine Operation Contract Schema Profile
 //
@@ -62,6 +73,17 @@ export function assertProfileSchema(schema: JsonSchema, at: string): void {
     if (!types || types.length === 0 || types.some((item) => typeof item !== 'string' || !PROFILE_TYPES.has(item))) {
       throw new FlowDefinitionError(`${at}.type must be one or more of: ${[...PROFILE_TYPES].join(', ')}`);
     }
+  }
+  const typeSet = schemaTypes(schema);
+  const hasObjectKeywords = 'properties' in schema || 'required' in schema || 'additionalProperties' in schema;
+  if (hasObjectKeywords && !isObjectTypeSet(typeSet)) {
+    throw new FlowDefinitionError(
+      `${at} uses object keywords (properties/required/additionalProperties) but its type is not `
+      + `"object" (or ["object","null"])`,
+    );
+  }
+  if ('items' in schema && !isArrayTypeSet(typeSet)) {
+    throw new FlowDefinitionError(`${at} uses "items" but its type is not "array" (or ["array","null"])`);
   }
   if (schema.enum !== undefined && (!Array.isArray(schema.enum) || schema.enum.length === 0)) {
     throw new FlowDefinitionError(`${at}.enum must be a non-empty array`);
@@ -106,29 +128,47 @@ export function schemasCompatible(producer: JsonSchema, consumer: JsonSchema): b
     if (producerEnum.some((value) => !accepted.has(JSON.stringify(value)))) return false;
   }
 
-  if (consumerTypes?.has('object') || requiredProperties(consumer).size > 0 || consumer.additionalProperties === false) {
+  const consumerProperties = schemaProperties(consumer);
+  const consumerRequired = requiredProperties(consumer);
+  if (consumerTypes?.has('object') || consumerRequired.size > 0
+    || consumer.additionalProperties === false || Object.keys(consumerProperties).length > 0) {
     const producerRequired = requiredProperties(producer);
-    const consumerRequired = requiredProperties(consumer);
     const producerProperties = schemaProperties(producer);
-    const consumerProperties = schemaProperties(consumer);
-    for (const key of consumerRequired) {
-      if (!producerRequired.has(key)) return false;
-      const expected = consumerProperties[key];
+    const producerClosed = producer.additionalProperties === false;
+
+    for (const [key, expected] of Object.entries(consumerProperties)) {
       const actual = producerProperties[key];
-      if (expected && (!actual || !schemasCompatible(actual, expected))) return false;
+      if (actual) {
+        // The producer may emit this property, so it must be compatible.
+        if (!schemasCompatible(actual, expected)) return false;
+      } else if (consumerRequired.has(key)) {
+        // A required property the producer does not guarantee.
+        return false;
+      } else if (!producerClosed) {
+        // An optional property the producer neither declares nor forbids: an open
+        // producer could emit an incompatible value, so this is not provable.
+        return false;
+      }
     }
-    // A closed consumer (additionalProperties:false) rejects any property it does
-    // not declare, so the producer must be closed too and must not declare a
-    // property outside the consumer's known set.
+    // Required properties (even those without a declared schema) must be guaranteed.
+    for (const key of consumerRequired) if (!producerRequired.has(key)) return false;
+
+    // A closed consumer rejects any property it does not declare, so the producer
+    // must be closed too and may not declare a property outside the consumer set.
     if (consumer.additionalProperties === false) {
-      if (producer.additionalProperties !== false) return false;
+      if (!producerClosed) return false;
       const allowed = new Set(Object.keys(consumerProperties));
       for (const key of Object.keys(producerProperties)) if (!allowed.has(key)) return false;
     }
   }
 
-  if (consumerTypes?.has('array') && isRecord(consumer.items)) {
-    if (!isRecord(producer.items) || !schemasCompatible(producer.items as JsonSchema, consumer.items as JsonSchema)) return false;
+  // `items` is only meaningful for an explicit array type on both sides.
+  if (isRecord(consumer.items)) {
+    if (!consumerTypes?.has('array') || !producerTypes?.has('array')
+      || !isRecord(producer.items)
+      || !schemasCompatible(producer.items as JsonSchema, consumer.items as JsonSchema)) {
+      return false;
+    }
   }
 
   return true;

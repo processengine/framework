@@ -31,6 +31,18 @@ Any other keyword — including `maxLength`, `minLength`, `pattern`, `format`,
 `additionalProperties` — is rejected with a localized `FlowDefinitionError` that
 names the offending keyword and its path.
 
+### Structural keywords are type-gated
+
+To keep the compatibility proof unambiguous, structural keywords are only allowed
+when the type says so:
+
+- `properties`, `required`, `additionalProperties` require an explicit object type
+  — `type: "object"` or the nullable `type: ["object", "null"]`.
+- `items` requires an explicit array type — `type: "array"` or `["array", "null"]`.
+
+A schema that carries object keywords or `items` without the matching explicit
+type is rejected as an ambiguous structural union.
+
 ## Compatibility algorithm (complete for this profile)
 
 A producer schema `P` is compatible with a consumer schema `C` when all hold:
@@ -39,13 +51,21 @@ A producer schema `P` is compatible with a consumer schema `C` when all hold:
    subset of `C`'s types.
 2. **Enum**: if `C` declares `enum`, `P` must declare `enum` and `P`'s values are a
    subset of `C`'s values.
-3. **Required properties**: for every property required by `C`, `P` must require it,
-   and `P`'s property schema must be compatible with `C`'s property schema.
-4. **Closed objects**: if `C` is closed (`additionalProperties: false`), then `P`
+3. **Declared properties**: for every property `C` declares (required *or*
+   optional):
+   - if `P` declares it, `P`'s property schema must be compatible with `C`'s;
+   - else if `C` requires it, `P` is incompatible (it does not guarantee it);
+   - else (optional and absent from `P`), `P` must be a **closed** object so it
+     cannot emit that property — an open producer without a schema for the
+     property is not provably compatible.
+4. **Required properties**: `P` must also `require` every property `C` requires,
+   even those without a declared property schema.
+5. **Closed objects**: if `C` is closed (`additionalProperties: false`), then `P`
    must also be closed and must not declare any property outside `C`'s declared
    property set. An open producer, or one declaring an extra property, is rejected.
-5. **Arrays**: if `C` is an array with `items`, `P` must be an array whose `items`
-   are compatible with `C`'s `items`.
+6. **Arrays**: `items` is only honored when both `C` and `P` are explicitly array
+   typed; then `P`'s `items` must be compatible with `C`'s `items`. A consumer
+   `items` without an explicit array type is incompatible.
 
 `switch` steps additionally require the producer key property to be a required
 `string` with a non-empty `enum`, and the switch `routes` to cover that enum

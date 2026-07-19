@@ -109,6 +109,54 @@ describe('schema compatibility — complete for the profile', () => {
   });
 });
 
+describe('schema compatibility — no known false positives (PE-M3-STABILIZE)', () => {
+  it('rejects an incompatible optional property (number vs string)', () => {
+    expect(schemasCompatible(
+      { type: 'object', properties: { x: { type: 'number' } } },
+      { type: 'object', properties: { x: { type: 'string' } } },
+    )).toBe(false);
+  });
+
+  it('rejects items on a schema that is not explicitly an array', () => {
+    expect(schemasCompatible(
+      { type: 'array', items: { type: 'number' } },
+      { items: { type: 'string' } },
+    )).toBe(false);
+  });
+
+  it('treats a compatible optional property as compatible', () => {
+    expect(schemasCompatible(
+      { type: 'object', properties: { x: { type: 'string' } } },
+      { type: 'object', properties: { x: { type: 'string' } } },
+    )).toBe(true);
+  });
+
+  it('accepts a closed producer that cannot emit an optional consumer property', () => {
+    expect(schemasCompatible(
+      { type: 'object', additionalProperties: false, properties: {} },
+      { type: 'object', properties: { x: { type: 'string' } } },
+    )).toBe(true);
+  });
+
+  it('rejects an open producer that could emit an undeclared optional property', () => {
+    expect(schemasCompatible(
+      { type: 'object', properties: {} },
+      { type: 'object', properties: { x: { type: 'string' } } },
+    )).toBe(false);
+  });
+
+  it('type-gates object and array keywords in the profile', () => {
+    expect(() => assertProfileSchema({ properties: { x: { type: 'string' } } } as JsonSchema, 'c'))
+      .toThrowError(FlowDefinitionError);
+    expect(() => assertProfileSchema({ items: { type: 'string' } } as JsonSchema, 'c'))
+      .toThrowError(FlowDefinitionError);
+    expect(() => assertProfileSchema({ type: ['object', 'null'], properties: { x: { type: 'string' } } } as JsonSchema, 'c'))
+      .not.toThrow();
+    expect(() => assertProfileSchema({ type: ['array', 'null'], items: { type: 'string' } } as JsonSchema, 'c'))
+      .not.toThrow();
+  });
+});
+
 describe('switch enum coverage is still fully checked', () => {
   const producer: JsonSchema = {
     type: 'object', required: ['status'],
