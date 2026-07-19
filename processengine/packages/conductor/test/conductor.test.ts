@@ -2,16 +2,16 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   compileFlow,
   Conductor,
-  evolve,
-  failure,
   FlowDefinitionError,
   operationCommandEnvelope,
   responseEnvelope,
   StaticArtifactRegistry,
   StaticOperationCatalog,
-  success,
   assertOperationCommand,
 } from '../src/index.js';
+// Kernel state-transition helpers are internal and reached directly, not through
+// the curated public entrypoint.
+import { evolve, failure, success } from '../src/kernel.js';
 import {
   createMemoryStorage,
   ManualClock,

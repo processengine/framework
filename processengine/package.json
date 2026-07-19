@@ -15,7 +15,9 @@
     "test": "vitest run",
     "check": "npm run build && npm run typecheck && npm run test",
     "pack:all": "npm run build && node scripts/pack-all.mjs",
-    "check:packages": "node scripts/package-smoke.mjs"
+    "check:packages": "node scripts/package-smoke.mjs",
+    "api:report": "node scripts/api-report.mjs",
+    "api:check": "node scripts/api-report.mjs --check"
   },
   "engines": {
     "node": ">=22.0.0"

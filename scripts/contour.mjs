@@ -43,6 +43,7 @@ switch (command) {
 async function frameworkGate() {
   await npm(['install', '--cache', cache('framework')], framework);
   await npm(['run', 'check'], framework);
+  await npm(['run', 'api:check'], framework);
   await npm(['run', 'check:packages'], framework);
 }
 

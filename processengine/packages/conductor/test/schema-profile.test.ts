@@ -1,13 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import {
-  assertProfileSchema,
-  assertSwitchSchema,
-  compileFlow,
-  FlowDefinitionError,
-  schemasCompatible,
-  StaticOperationCatalog,
-} from '../src/index.js';
+import { compileFlow, FlowDefinitionError, StaticOperationCatalog } from '../src/index.js';
 import type { JsonSchema } from '../src/index.js';
+// Schema-compatibility helpers are internal; tests reach them via source path.
+import { assertProfileSchema, assertSwitchSchema, schemasCompatible } from '../src/schema.js';
 
 const policy = { id: 'p', version: '1', completionTimeoutMs: 1000, dispatch: { maxAttempts: 1, retryDelayMs: 0 } };
 
