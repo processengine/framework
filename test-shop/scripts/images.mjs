@@ -5,7 +5,6 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const shop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const dockerfile = path.join(shop, 'Dockerfile');
 const ignored = new Set([
   'node_modules', 'dist',
 ]);
@@ -18,16 +17,33 @@ const buildFiles = [
 ];
 const buildDirectories = ['apps', 'packages', 'config', 'flows'];
 
-export async function contentTag() {
+const validTag = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/u;
+
+export const imageComponents = [
+  { component: 'shop-host', target: 'shop-host', repository: 'processengine/test-shop-shop-host' },
+  { component: 'shop-warehouse', target: 'shop-warehouse', repository: 'processengine/test-shop-shop-warehouse' },
+  { component: 'shop-payment', target: 'shop-payment', repository: 'processengine/test-shop-shop-payment' },
+];
+
+// Registry mode hashes the committed test-shop worktree; the resulting `sha-*`
+// tag proves the published `0.1.0` consumer bytes. Local mode passes an explicit
+// `contentTag` computed from the framework tarball bytes (see scripts/consumer.mjs)
+// so a framework-code change necessarily changes the tag and therefore the image.
+export async function contentTag(options = {}) {
+  if (options.contentTag !== undefined) {
+    if (!validTag.test(options.contentTag)) throw new TypeError(`Invalid content tag: ${options.contentTag}`);
+    return options.contentTag;
+  }
   const explicit = process.env.TEST_SHOP_IMAGE_TAG;
   if (explicit !== undefined) {
-    if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/u.test(explicit)) throw new TypeError('TEST_SHOP_IMAGE_TAG is invalid');
+    if (!validTag.test(explicit)) throw new TypeError('TEST_SHOP_IMAGE_TAG is invalid');
     return explicit;
   }
+  const contextDir = options.contextDir ?? shop;
   const hash = createHash('sha256');
-  const files = await sourceFiles(shop);
+  const files = await sourceFiles(contextDir);
   for (const file of files) {
-    hash.update(path.relative(shop, file));
+    hash.update(path.relative(contextDir, file));
     hash.update('\0');
     hash.update(await readFile(file));
     hash.update('\0');
@@ -35,20 +51,18 @@ export async function contentTag() {
   return `sha-${hash.digest('hex').slice(0, 16)}`;
 }
 
-export async function imageDefinitions() {
-  const tag = await contentTag();
-  return [
-    { component: 'shop-host', target: 'shop-host', repository: 'processengine/test-shop-shop-host', tag },
-    { component: 'shop-warehouse', target: 'shop-warehouse', repository: 'processengine/test-shop-shop-warehouse', tag },
-    { component: 'shop-payment', target: 'shop-payment', repository: 'processengine/test-shop-shop-payment', tag },
-  ].map((item) => ({ ...item, image: `${item.repository}:${item.tag}` }));
+export async function imageDefinitions(options = {}) {
+  const tag = await contentTag(options);
+  return imageComponents.map((item) => ({ ...item, tag, image: `${item.repository}:${item.tag}` }));
 }
 
-export async function buildImages() {
+export async function buildImages(options = {}) {
   run('docker', ['version'], { capture: true });
-  const images = await imageDefinitions();
+  const contextDir = options.contextDir ?? shop;
+  const contextDockerfile = path.join(contextDir, 'Dockerfile');
+  const images = await imageDefinitions(options);
   for (const item of images) {
-    run('docker', ['build', '--file', dockerfile, '--target', item.target, '--tag', item.image, shop]);
+    run('docker', ['build', '--file', contextDockerfile, '--target', item.target, '--tag', item.image, contextDir]);
     const id = run('docker', ['image', 'inspect', '--format', '{{.Id}}', item.image], { capture: true });
     console.log(JSON.stringify({ ...item, id }));
   }

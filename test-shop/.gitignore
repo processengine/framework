@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .framework/
+.work/
 .artifacts/
 .npm-cache/
 *.log

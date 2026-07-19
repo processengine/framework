@@ -1,15 +1,38 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildImages, imageDefinitions, shop } from './images.mjs';
+import { buildImages, contentTag, imageDefinitions, shop } from './images.mjs';
+import { prepareBuild, resolveMode, workRoot, writeSourceManifest } from './consumer.mjs';
 
 const context = 'docker-desktop';
 const namespace = 'processengine-test-shop';
 const release = 'test-shop';
 const chart = path.join(shop, 'deploy/helm/test-shop');
 const values = path.join(chart, 'values.docker-desktop.yaml');
+const buildStateFile = path.join(workRoot, 'k8s-current-build.json');
+
+// The image content tag of the currently active deployment. `deploy` sets it and
+// persists it; `test`/`resilience`/`collect` load it so their image assertions
+// verify exactly the mode (local vs registry) that was deployed.
+let activeContentTag;
+const imageOpts = () => (activeContentTag ? { contentTag: activeContentTag } : {});
+
+async function persistBuild(state) {
+  await mkdir(workRoot, { recursive: true });
+  await writeFile(buildStateFile, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+async function loadActiveBuild() {
+  try {
+    const state = JSON.parse(await readFile(buildStateFile, 'utf8'));
+    activeContentTag = state.contentTag;
+    return state;
+  } catch {
+    throw new Error('No active deployment recorded. Run k8s:deploy:local or k8s:deploy:registry first.');
+  }
+}
 
 function execute(program, args, options = {}) {
   const result = spawnSync(program, args, {
@@ -70,7 +93,7 @@ async function doctor({ requireImages = true } = {}) {
   const existing = namespaceObject();
   if (existing) assertOwnedNamespace(existing);
   if (requireImages) {
-    for (const image of await imageDefinitions()) execute('docker', ['image', 'inspect', image.image], { quiet: true });
+    for (const image of await imageDefinitions(imageOpts())) execute('docker', ['image', 'inspect', image.image], { quiet: true });
   }
   console.log(`Doctor passed: context=${context}, namespace=${namespace}, nodes=${nodes.items.length}`);
 }
@@ -82,14 +105,18 @@ function helmWaitArgs() {
   return Number(match[1]) >= 4 ? ['--wait=legacy'] : ['--wait'];
 }
 
-async function deploy() {
+async function deploy(mode) {
   try {
     assertContext();
-    await buildImages();
+    const build = await prepareBuild(mode);
+    activeContentTag = await contentTag({ contentTag: build.contentTag, contextDir: build.contextDir });
+    const sourceManifest = { ...build.manifest, imageContentTag: activeContentTag };
+    console.log(`\n=== Kubernetes deploy: mode=${mode}, imageContentTag=${activeContentTag} ===\n`);
+    await buildImages({ contextDir: build.contextDir, contentTag: build.contentTag });
     await doctor();
     ensureNamespace();
     helm(['lint', chart, '--values', values], { quiet: true });
-    const images = await imageDefinitions();
+    const images = await imageDefinitions(imageOpts());
     const imageArgs = images.flatMap((image) => {
       const valueName = image.component === 'shop-host' ? 'shopHost'
         : image.component === 'shop-warehouse' ? 'shopWarehouse' : 'shopPayment';
@@ -97,8 +124,9 @@ async function deploy() {
     });
     helm(['upgrade', '--install', release, chart, '--namespace', namespace, '--values', values,
       ...imageArgs, ...helmWaitArgs(), '--wait-for-jobs', '--timeout', '10m']);
+    await persistBuild({ mode, contentTag: activeContentTag, deployedAt: new Date().toISOString() });
     status();
-    await collectEvidence('deploy-pass');
+    await collectEvidence('deploy-pass', { 'source-manifest.json': JSON.stringify(sourceManifest, null, 2) });
   } catch (error) {
     await safeCollectEvidence('deploy-failure', { 'deploy-error.txt': String(error) });
     throw error;
@@ -115,6 +143,7 @@ function status() {
 
 async function test() {
   try {
+    await loadActiveBuild();
     await doctor();
     await assertWorkloads();
     helm(['test', release, '--namespace', namespace, '--logs', '--timeout', '120s']);
@@ -129,6 +158,7 @@ async function test() {
 
 async function resilience() {
   try {
+    await loadActiveBuild();
     await doctor();
     await assertWorkloads();
     const output = await withProxy('resilience.mjs', process.argv.slice(3));
@@ -142,7 +172,7 @@ async function resilience() {
 }
 
 async function assertWorkloads() {
-  const expectedImages = new Map((await imageDefinitions()).map((definition) => [definition.component, definition.image]));
+  const expectedImages = new Map((await imageDefinitions(imageOpts())).map((definition) => [definition.component, definition.image]));
   for (const component of ['shop-host', 'shop-warehouse', 'shop-payment']) {
     kubectl(['rollout', 'status', '--namespace', namespace, `deployment/${release}-${component}`, '--timeout=180s']);
   }
@@ -273,7 +303,7 @@ async function collectEvidence(label, extra = {}) {
     docker: execute('docker', ['version', '--format', '{{json .}}'], { allowFailure: true, quiet: true }).stdout,
     kubectl: execute('kubectl', ['version', '-o', 'json'], { allowFailure: true, quiet: true }).stdout,
     helm: execute('helm', ['version', '--short'], { allowFailure: true, quiet: true }).stdout,
-    images: await imageDefinitions(),
+    images: await imageDefinitions(imageOpts()),
   }, null, 2);
   if (!existing) {
     files['namespace.txt'] = 'namespace does not exist\n';
@@ -330,10 +360,10 @@ async function down() {
 
 const command = process.argv[2];
 if (command === 'doctor') await doctor({ requireImages: false });
-else if (command === 'deploy') await deploy();
+else if (command === 'deploy') await deploy(resolveMode(process.argv[3]));
 else if (command === 'status') status();
 else if (command === 'test') await test();
 else if (command === 'resilience') await resilience();
-else if (command === 'collect') await collectEvidence('manual');
+else if (command === 'collect') { await loadActiveBuild(); await collectEvidence('manual'); }
 else if (command === 'down') await down();
-else throw new TypeError('Usage: node scripts/k8s.mjs <doctor|deploy|status|test|resilience|collect|down>');
+else throw new TypeError('Usage: node scripts/k8s.mjs <doctor|deploy <local|registry>|status|test|resilience|collect|down>');

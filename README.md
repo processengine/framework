@@ -23,7 +23,7 @@ Prerequisites:
 ```bash
 npm run bootstrap
 npm run k8s:doctor
-npm run k8s:deploy
+npm run k8s:deploy:registry   # or k8s:deploy:local to run your worktree
 npm run k8s:test
 npm run k8s:resilience
 ```
@@ -38,15 +38,38 @@ Use `npm run k8s:collect` to write diagnostic evidence under
 to remove only the namespace owned by this contour. Persistent data survives
 pod restarts and rolling upgrades; namespace deletion removes the contour PVCs.
 
-## Daily development loop
+## Two consumption modes
+
+The contour consumes the framework in two explicit, non-overlapping modes:
+
+- **local** — packs the three framework packages from the current worktree,
+  stages an isolated consumer under `.work/local-consumer/`, installs exactly
+  those tarballs, and builds images whose content tag is derived from the tarball
+  bytes. This proves the code in your tree right now. It never rewrites the
+  committed `test-shop` manifests or lockfile.
+- **registry** — installs the exact published `@processengine/*` versions from
+  the committed manifest and lockfile. This is the external-consumer / release
+  gate: it proves the bytes on npm.
+
+Every deploy prints its mode and writes a machine-readable `source-manifest.json`
+(mode, git commit, package versions, tarball integrities, image content tag). A
+deploy without a mode fails with a hint to choose one.
+
+### Daily local loop
 
 ```bash
-# validate framework and the published consumer dependency boundary
-npm run check
+# change framework code under processengine/…, then:
+npm run check:local            # deterministic gate against your local tarballs
+npm run k8s:deploy:local       # deploy the local build (upgrade-safe)
+npm run k8s:test               # business acceptance against the running contour
+```
 
-# validate and upgrade the running contour
-npm run k8s:deploy
-npm run k8s:test
+### Release-verification loop
+
+```bash
+npm run check:registry         # deterministic gate against published 0.1.0
+npm run k8s:deploy:registry    # deploy the exact published packages
+npm run k8s:test               # business acceptance as an external consumer sees it
 ```
 
 See `DOD.md` for the milestone gates and `test-shop/docs/OPERATIONS.md` for

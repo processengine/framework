@@ -6,6 +6,9 @@ dist/
 .packages/
 .framework/
 
+# Ephemeral local-mode consumer build context (regenerated deterministically)
+.work/
+
 # Local caches and generated evidence
 .claude/
 .npm-cache/
