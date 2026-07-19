@@ -23,6 +23,7 @@
     "node": ">=22.0.0"
   },
   "devDependencies": {
+    "@microsoft/api-extractor": "^7.58.11",
     "@types/node": "^22.15.0",
     "@types/pg": "^8.15.2",
     "typescript": "^5.8.3",

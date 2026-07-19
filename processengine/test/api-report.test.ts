@@ -3,50 +3,60 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const frameworkRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const reportsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'api-reports');
+const read = (file: string) => readFileSync(path.join(reportsDir, file), 'utf8');
 
-const PACKAGES = [
-  { name: '@processengine/conductor', dir: 'packages/conductor', file: 'processengine-conductor.api.md' },
-  { name: '@processengine/transport-kafka', dir: 'packages/transport-kafka', file: 'processengine-transport-kafka.api.md' },
-  { name: '@processengine/storage-postgres', dir: 'packages/storage-postgres', file: 'processengine-storage-postgres.api.md' },
+// One API Extractor report per published TypeScript entrypoint declared in
+// package.json exports. The reports capture full declarations, so signature
+// changes — not just added/removed names — trip the drift gate (npm run api:check).
+const REPORTS = [
+  'conductor.api.md',
+  'conductor-testing.api.md',
+  'transport-kafka.api.md',
+  'transport-kafka-worker.api.md',
+  'storage-postgres.api.md',
+  'storage-postgres-migrations.api.md',
 ];
 
-// The API report must snapshot EVERY public entrypoint declared in package.json
-// exports, not only the root. Otherwise a change to a subpath (testing / worker /
-// migrations) would not move the report and the drift gate would miss it.
-function tsEntrypoints(dir: string): string[] {
-  const manifest = JSON.parse(readFileSync(path.join(frameworkRoot, dir, 'package.json'), 'utf8')) as {
-    name: string;
-    exports: Record<string, unknown>;
-  };
-  const paths: string[] = [];
-  for (const [subpath, value] of Object.entries(manifest.exports)) {
-    const target = typeof value === 'string' ? value : (value as { import?: string }).import;
-    if (typeof target !== 'string' || !/^\.\/dist\/.+\.js$/u.test(target)) continue;
-    paths.push(subpath === '.' ? manifest.name : `${manifest.name}${subpath.slice(1)}`);
-  }
-  return paths;
-}
-
-describe.each(PACKAGES)('API report coverage — $name', (pkg) => {
-  const report = readFileSync(path.join(frameworkRoot, 'api-reports', pkg.file), 'utf8');
-
-  it('has a section for every TS entrypoint in package.json exports', () => {
-    const entrypoints = tsEntrypoints(pkg.dir);
-    expect(entrypoints.length).toBeGreaterThanOrEqual(2); // root + at least one subpath
-    for (const importPath of entrypoints) {
-      expect(report, `missing report section for ${importPath}`).toContain(`## \`${importPath}\``);
-    }
+describe('API reports cover every entrypoint', () => {
+  it.each(REPORTS)('%s is an API Extractor report', (file) => {
+    const report = read(file);
+    expect(report).toContain('API Report File for');
+    expect(report).toContain('```ts');
   });
 });
 
-describe('subpath surfaces are snapshotted', () => {
-  it('includes the specific documented subpaths', () => {
-    const conductor = readFileSync(path.join(frameworkRoot, 'api-reports/processengine-conductor.api.md'), 'utf8');
-    const kafka = readFileSync(path.join(frameworkRoot, 'api-reports/processengine-transport-kafka.api.md'), 'utf8');
-    const postgres = readFileSync(path.join(frameworkRoot, 'api-reports/processengine-storage-postgres.api.md'), 'utf8');
-    expect(conductor).toContain('## `@processengine/conductor/testing`');
-    expect(kafka).toContain('## `@processengine/transport-kafka/worker`');
-    expect(postgres).toContain('## `@processengine/storage-postgres/migrations`');
+describe('API reports are signature-level, not name-only', () => {
+  it('pins full function signatures (parameter and return types)', () => {
+    const report = read('conductor.api.md');
+    // Exact parameter and return types are captured. A change such as
+    // `value: unknown` -> `value: string` (same export name and kind) would alter
+    // this line, so `api:check` would fail until the report is regenerated.
+    expect(report).toContain('compileFlow(value: unknown, options?: CompileFlowOptions): CompiledProcessDefinition;');
+    expect(report).not.toContain('compileFlow(value: string');
+  });
+
+  it('pins interface fields and their optionality', () => {
+    const report = read('conductor.api.md');
+    // Optional members are recorded with `?:`; flipping required <-> optional
+    // changes the report.
+    expect(report).toMatch(/readonly operations\?: OperationContractRegistry;/u);
+  });
+});
+
+describe('the transition kernel is public only through /testing', () => {
+  it('is absent from the conductor root report', () => {
+    const root = read('conductor.api.md');
+    expect(root).not.toMatch(/export function evolve\b/u);
+    expect(root).not.toMatch(/export function success\b/u);
+    expect(root).not.toMatch(/export function failure\b/u);
+    expect(root).not.toMatch(/interface TransitionResult\b/u);
+  });
+
+  it('is present in the conductor/testing report with full signatures', () => {
+    const testing = read('conductor-testing.api.md');
+    expect(testing).toMatch(/export function evolve\(definition: CompiledProcessDefinition, previous: ProcessState \| undefined, event: ProcessEvent\): TransitionResult;/u);
+    expect(testing).toContain('export function success(response: JsonValue): OperationCompletion;');
+    expect(testing).toContain('export function failure(error: OperationError): OperationCompletion;');
   });
 });

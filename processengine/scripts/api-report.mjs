@@ -1,115 +1,102 @@
-// Deterministic public-API snapshot for every published package.
+// Deterministic, signature-level public-API snapshot for every published package.
 //
-// For each package it enumerates the exported symbols of EVERY public entrypoint
-// declared in package.json `exports` (root and subpaths such as
-// `./testing`, `./worker`, `./migrations`) using the TypeScript type checker,
-// then writes a sorted report to api-reports/<package>.api.md with one section per
-// entrypoint. `--check` regenerates in memory and fails if a committed report is
-// stale, so any change to any public entrypoint that is not reviewed and committed
-// breaks CI.
+// Uses @microsoft/api-extractor (dev-only) to build an API report from each built
+// .d.ts entrypoint, so the report captures full declarations — parameter and
+// return types, interface fields and their optionality, generics and unions — not
+// just a list of names. Any of those changing trips the drift gate, even when the
+// export name and kind are unchanged.
+//
+// It covers every TypeScript entrypoint declared in package.json `exports`:
+//   conductor, conductor/testing,
+//   transport-kafka, transport-kafka/worker,
+//   storage-postgres, storage-postgres/migrations.
+// The conductor JSON Schema export is a shipped artifact, not a TS API, and is
+// covered by the package smoke / package-content checks instead.
+//
+// `--check` compares without writing and fails on any drift. Requires a prior
+// build (the framework gate builds before running this).
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, existsSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const ts = require('typescript');
+const { Extractor, ExtractorConfig } = require('@microsoft/api-extractor');
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const reportsDir = path.join(root, 'api-reports');
+const tempDir = path.join(tmpdir(), 'processengine-api-extractor');
 
-const PACKAGES = [
-  { name: '@processengine/conductor', dir: 'packages/conductor' },
-  { name: '@processengine/transport-kafka', dir: 'packages/transport-kafka' },
-  { name: '@processengine/storage-postgres', dir: 'packages/storage-postgres' },
+const ENTRYPOINTS = [
+  { dir: 'packages/conductor', entry: 'index', report: 'conductor.api.md' },
+  { dir: 'packages/conductor', entry: 'testing', report: 'conductor-testing.api.md' },
+  { dir: 'packages/transport-kafka', entry: 'index', report: 'transport-kafka.api.md' },
+  { dir: 'packages/transport-kafka', entry: 'worker', report: 'transport-kafka-worker.api.md' },
+  { dir: 'packages/storage-postgres', entry: 'index', report: 'storage-postgres.api.md' },
+  { dir: 'packages/storage-postgres', entry: 'migrations', report: 'storage-postgres-migrations.api.md' },
 ];
 
-// Map every `exports` entry that resolves to a built dist/*.js entrypoint back to
-// its TypeScript source, so the report tracks the actual published surface.
-function entrypoints(packageDir) {
-  const manifest = JSON.parse(readFileSync(path.join(root, packageDir, 'package.json'), 'utf8'));
-  const result = [];
-  for (const [subpath, value] of Object.entries(manifest.exports ?? {})) {
-    const target = typeof value === 'string' ? value : value?.import ?? value?.types;
-    if (typeof target !== 'string') continue;
-    const match = /^\.\/dist\/(.+)\.(?:js|d\.ts)$/u.exec(target);
-    if (!match) continue; // e.g. a shipped JSON schema file — not a TS surface
-    result.push({ subpath, src: path.join(root, packageDir, 'src', `${match[1]}.ts`) });
-  }
-  return result.sort((left, right) => left.subpath.localeCompare(right.subpath));
-}
-
-function kindOf(checker, symbol) {
-  let resolved = symbol;
-  if (resolved.flags & ts.SymbolFlags.Alias) resolved = checker.getAliasedSymbol(resolved);
-  const flags = resolved.flags;
-  if (flags & ts.SymbolFlags.Class) return 'class';
-  if (flags & ts.SymbolFlags.Enum) return 'enum';
-  if (flags & ts.SymbolFlags.Function) return 'function';
-  if (flags & ts.SymbolFlags.Interface) return 'interface';
-  if (flags & ts.SymbolFlags.TypeAlias) return 'type';
-  if (flags & ts.SymbolFlags.ValueModule) return 'namespace';
-  if (flags & (ts.SymbolFlags.Variable | ts.SymbolFlags.BlockScopedVariable | ts.SymbolFlags.FunctionScopedVariable | ts.SymbolFlags.Property)) return 'const';
-  return 'value';
-}
-
-function exportsOf(packageDir, entries) {
-  const configPath = path.join(root, packageDir, 'tsconfig.json');
-  const config = ts.readConfigFile(configPath, ts.sys.readFile);
-  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, path.dirname(configPath));
-  const program = ts.createProgram({ rootNames: entries.map((entry) => entry.src), options: parsed.options });
-  const checker = program.getTypeChecker();
-  return entries.map((entry) => {
-    const source = program.getSourceFile(entry.src);
-    if (!source) throw new Error(`Cannot load entrypoint ${entry.src}`);
-    const moduleSymbol = checker.getSymbolAtLocation(source);
-    if (!moduleSymbol) throw new Error(`${entry.src} is not a module`);
-    const symbols = checker.getExportsOfModule(moduleSymbol)
-      .map((symbol) => ({ name: symbol.getName(), kind: kindOf(checker, symbol) }))
-      .sort((left, right) => left.name.localeCompare(right.name));
-    return { subpath: entry.subpath, symbols };
-  });
-}
-
-function reportFor(pkg) {
-  const entries = entrypoints(pkg.dir);
-  const surfaces = exportsOf(pkg.dir, entries);
-  const lines = [
-    `# Public API report — ${pkg.name}`,
-    '',
-    'Generated by `npm run api:report`. Do not edit by hand. A change here must be',
-    'a reviewed, intentional change to the public surface. One section per entrypoint',
-    'declared in `package.json` exports.',
-    '',
-  ];
-  for (const surface of surfaces) {
-    const importPath = surface.subpath === '.' ? pkg.name : `${pkg.name}${surface.subpath.slice(1)}`;
-    lines.push(`## \`${importPath}\``, '');
-    for (const symbol of surface.symbols) lines.push(`- ${symbol.kind} \`${symbol.name}\``);
-    lines.push('');
-  }
-  return lines.join('\n');
-}
-
 const check = process.argv.includes('--check');
-await mkdir(reportsDir, { recursive: true });
-let drift = false;
-for (const pkg of PACKAGES) {
-  const content = reportFor(pkg);
-  const file = path.join(reportsDir, `${pkg.name.replace(/^@/u, '').replace('/', '-')}.api.md`);
-  if (check) {
-    const existing = await readFile(file, 'utf8').catch(() => '');
-    if (existing !== content) {
-      drift = true;
-      console.error(`API report drift for ${pkg.name}: ${path.relative(root, file)} is stale. Run \`npm run api:report\`.`);
-    } else {
-      console.log(`API report up to date: ${pkg.name}`);
-    }
+mkdirSync(reportsDir, { recursive: true });
+rmSync(tempDir, { recursive: true, force: true });
+mkdirSync(tempDir, { recursive: true });
+
+let failed = false;
+for (const item of ENTRYPOINTS) {
+  const projectFolder = path.join(root, item.dir);
+  const mainEntryPointFilePath = path.join(projectFolder, 'dist', `${item.entry}.d.ts`);
+  if (!existsSync(mainEntryPointFilePath)) {
+    throw new Error(`Missing ${path.relative(root, mainEntryPointFilePath)} — run "npm run build" first.`);
+  }
+
+  const config = ExtractorConfig.prepare({
+    configObjectFullPath: path.join(projectFolder, `api-extractor.${item.entry}.json`),
+    packageJsonFullPath: path.join(projectFolder, 'package.json'),
+    configObject: {
+      projectFolder,
+      mainEntryPointFilePath,
+      compiler: { tsconfigFilePath: path.join(projectFolder, 'tsconfig.json') },
+      apiReport: {
+        enabled: true,
+        reportFolder: reportsDir,
+        reportTempFolder: tempDir,
+        reportFileName: item.report,
+      },
+      docModel: { enabled: false },
+      dtsRollup: { enabled: false },
+      tsdocMetadata: { enabled: false },
+      messages: {
+        // Release tags (@public/@internal) are not used in this project; the
+        // curated exports themselves define the surface. Report forgotten exports
+        // and TSDoc issues without failing the deterministic snapshot.
+        extractorMessageReporting: {
+          default: { logLevel: 'warning' },
+          'ae-missing-release-tag': { logLevel: 'none' },
+          'ae-forgotten-export': { logLevel: 'none' },
+          'ae-undocumented': { logLevel: 'none' },
+        },
+        tsdocMessageReporting: { default: { logLevel: 'none' } },
+        compilerMessageReporting: { default: { logLevel: 'warning' } },
+      },
+    },
+  });
+
+  const result = Extractor.invoke(config, { localBuild: !check, showVerboseMessages: false });
+  if (result.errorCount > 0) {
+    failed = true;
+    console.error(`API extractor reported ${result.errorCount} error(s) for ${item.report}`);
+  }
+  if (check && result.apiReportChanged) {
+    failed = true;
+    console.error(`API drift for ${item.report}: run "npm run api:report" and review the change.`);
+  } else if (check) {
+    console.log(`API report up to date: ${item.report}`);
   } else {
-    await writeFile(file, content);
-    console.log(`Wrote ${path.relative(root, file)}`);
+    console.log(`Wrote api-reports/${item.report}`);
   }
 }
-if (check && drift) process.exit(1);
+
+rmSync(tempDir, { recursive: true, force: true });
+if (failed) process.exit(1);
