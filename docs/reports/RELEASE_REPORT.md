@@ -73,6 +73,13 @@ immediately before publication. The npm account had owner access to the
 as the GitHub Actions secret `NPM_TOKEN` and used without writing it into the
 workspace.
 
+Post-release note (2026-07-19): the preceding paragraph records how `0.1.0` was
+originally published. PE-M2 subsequently configured `publish-npm.yml` as the
+trusted GitHub Actions publisher for all three packages, set package publishing
+access to disallow traditional tokens, deleted the GitHub secret, revoked the
+only project npm token, verified empty token inventory, and removed the local
+credential. No package or tag was changed by that migration.
+
 Post-publication deploy evidence:
 
 - `test-shop/.artifacts/k8s/2026-07-18T20-55-36.992Z-deploy-pass/`;

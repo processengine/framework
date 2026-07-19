@@ -28,6 +28,11 @@ The trusted-publisher fields are case-sensitive and exact:
 
 Each package has its own npm trust relationship with those values.
 
+Current verified state (2026-07-19): all three relationships match this table,
+all three packages disallow traditional publish tokens, GitHub Actions has no
+`NPM_TOKEN`, and npm project-token inventory is empty. No OIDC release has run
+yet because the migration did not create a new version or tag.
+
 ## One-time trusted-publisher configuration
 
 Prerequisites are Node >=22.14, npm >=11.15 for the `npm trust` management
@@ -110,4 +115,3 @@ three exact versions in a clean temporary project.
 - To suspend releases, disable the workflow or revoke the npm trust
   relationships. Reintroducing a long-lived write token is a separate security
   decision, not a routine recovery step.
-

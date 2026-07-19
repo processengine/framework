@@ -1,8 +1,8 @@
 # Release status — 0.1.0
 
-Date: 2026-07-18
+Date: 2026-07-19
 
-Status: **RELEASE COMPLETE**
+Status: **RELEASE COMPLETE; TRUSTED PUBLISHING CONFIGURED**
 
 ## Accepted builds
 
@@ -22,6 +22,7 @@ integrities; it has no local `.framework` dependency or staging step.
 ## Verified gates
 
 - `npm run check`: framework 57 passed / 8 live skipped; test-shop 42 passed;
+- PE-M2 `npm run check`: framework 64 passed / 8 live skipped;
 - clean public registry install and imports in Node 22: PASS;
 - Compose business acceptance: 16/16 PASS; Compose stopped afterward;
 - original Kubernetes business acceptance: 16/16 PASS;
@@ -52,6 +53,19 @@ was independently verified through local `main`, the remote branch ref, and the
 GitHub commits API. Annotated tag `v0.1.0` was pushed and its dereferenced remote
 target is the same release commit.
 
-The repository Actions secret `NPM_TOKEN` is configured; its value is not in
-the repository. Kubernetes remains running on `docker-desktop`; Compose is
-stopped with volumes retained.
+## Trusted publishing migration
+
+On 2026-07-19, GitHub Actions workflow `publish-npm.yml` was registered on
+`main` and configured as the npm trusted publisher for all three packages.
+Authenticated `npm trust list` readback matched `processengine/framework`, the
+workflow filename, and direct-publish permission for `3/3` packages.
+
+Publishing access now requires 2FA and disallows traditional tokens for every
+package. GitHub Actions no longer contains `NPM_TOKEN`; the only project npm
+token was revoked, registry token inventory was verified empty, and the former
+local npm credential was removed.
+
+No package version or tag changed during this migration. The first future
+release remains the end-to-end OIDC and automatic-provenance verification.
+Kubernetes remains running on `docker-desktop`; Compose is stopped with volumes
+retained.
