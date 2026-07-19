@@ -42,10 +42,10 @@ try {
   // 2) External TypeScript consumer: every documented root/subpath entrypoint must
   //    compile against the installed tarballs' types under NodeNext resolution.
   await writeFile(path.join(directory, 'consumer.ts'), [
-    "import { compileFlow, Conductor, createConductor, StaticArtifactRegistry, StaticOperationCatalog, parseOperationCommand, completionPayload, operationCompletionEnvelope } from '@processengine/conductor';",
-    "import type { ProcessState, StartProcessResult, JsonValue, MessageEnvelope, ProcessStorage, MessageTransport, OperationCompletion } from '@processengine/conductor';",
-    "import { evolve, success, failure, createMemoryStorage, createMemoryTransport, createMemoryConductor, ManualClock } from '@processengine/conductor/testing';",
-    "import type { TransitionResult, MessageTransportConformanceOptions } from '@processengine/conductor/testing';",
+    "import { compileFlow, Conductor, createConductor, StaticArtifactRegistry, StaticOperationCatalog, parseOperationCommand, completionPayload, operationCompletionEnvelope, evolve, success, failure } from '@processengine/conductor';",
+    "import type { ProcessState, StartProcessResult, JsonValue, MessageEnvelope, ProcessStorage, MessageTransport, OperationCompletion, TransitionResult } from '@processengine/conductor';",
+    "import { createMemoryStorage, createMemoryTransport, createMemoryConductor, ManualClock } from '@processengine/conductor/testing';",
+    "import type { MessageTransportConformanceOptions } from '@processengine/conductor/testing';",
     "import { createKafkaTransport, KafkaTransport } from '@processengine/transport-kafka';",
     "import { createKafkaOperationWorker, operationSuccess } from '@processengine/transport-kafka/worker';",
     "import type { OperationWorkerContext } from '@processengine/transport-kafka/worker';",

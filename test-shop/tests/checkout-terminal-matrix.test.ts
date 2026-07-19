@@ -2,10 +2,12 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   compileFlow,
+  evolve,
+  failure,
+  success,
   type OperationCompletion,
   type ProcessState,
 } from '@processengine/conductor';
-import { evolve, failure, success } from '@processengine/conductor/testing';
 import { describe, expect, it } from 'vitest';
 
 const definition = JSON.parse(readFileSync(

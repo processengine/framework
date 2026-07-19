@@ -9,6 +9,7 @@ import * as api from '../src/index.js';
 const PUBLIC_VALUES = [
   'Conductor', 'createConductor',
   'compileFlow', 'StaticArtifactRegistry', 'StaticOperationCatalog',
+  'evolve', 'success', 'failure',
   'ProcessEngineError', 'FlowDefinitionError', 'ProcessExecutionError', 'ConductorError', 'ProtocolError',
   'CORE_OPERATION_ERRORS', 'CORE_OPERATION_ERROR_CODES',
   'OPERATION_COMMAND', 'OPERATION_COMPLETION',
@@ -18,7 +19,7 @@ const PUBLIC_VALUES = [
 
 // Internal runtime helpers that must never be part of the public root export.
 const INTERNAL_VALUES = [
-  'evolve', 'success', 'failure', 'normalizeCompletion',
+  'normalizeCompletion',
   'schemasCompatible', 'assertProfileSchema', 'assertSwitchSchema', 'withCoreOperationErrors',
   'cloneJson', 'canonicalJson', 'digestJson', 'deepFreeze', 'isRecord',
   'MemoryProcessStorage', 'MemoryMessageTransport', 'createMemoryStorage',

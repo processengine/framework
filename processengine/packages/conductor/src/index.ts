@@ -14,6 +14,11 @@ export { Conductor, createConductor } from './conductor.js';
 export { compileFlow } from './compiler.js';
 export { StaticArtifactRegistry, StaticOperationCatalog } from './registry.js';
 
+// Completion constructors and the pure state-transition primitive. These have
+// been public at the root since 0.1.0; they are kept public (rather than removed)
+// to avoid a breaking change for existing consumers.
+export { evolve, success, failure } from './kernel.js';
+
 // Documented errors and the core operation-error catalogue.
 export {
   ProcessEngineError,
@@ -84,6 +89,7 @@ export type {
   PendingOperation,
   ProcessFault,
   ProcessState,
+  TransitionResult,
   JsonSchema,
   OperationContract,
   OperationContractRegistry,

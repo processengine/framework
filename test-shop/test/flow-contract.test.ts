@@ -3,12 +3,15 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   compileFlow,
+  evolve,
+  failure,
   StaticOperationCatalog,
+  success,
   type JsonValue,
   type OperationBinding,
   type OperationCompletion,
+  type TransitionResult,
 } from '@processengine/conductor';
-import { evolve, failure, success, type TransitionResult } from '@processengine/conductor/testing';
 import { parseCheckoutInput } from '../apps/shop-host/src/app.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
