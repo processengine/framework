@@ -9,6 +9,7 @@
     "check:local": "node scripts/contour.mjs check:local",
     "check:registry": "node scripts/contour.mjs check:registry",
     "pack": "node scripts/contour.mjs pack",
+    "review:bundle": "node scripts/review-bundle.mjs",
     "compose:deploy": "npm --prefix test-shop run compose:deploy",
     "compose:deploy:local": "npm --prefix test-shop run compose:deploy:local",
     "compose:deploy:registry": "npm --prefix test-shop run compose:deploy:registry",
