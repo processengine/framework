@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildImages, contentTag, imageDefinitions, shop } from './images.mjs';
 import { prepareBuild, resolveMode, workRoot, writeSourceManifest } from './consumer.mjs';
+import { kindLoadPlan } from './kind.mjs';
 
 // Context is allowlisted, never disabled: Docker Desktop locally, or a specific
 // kind-* cluster in CI. Default is unchanged so the local contour is untouched.
@@ -120,9 +121,15 @@ async function deploy(mode) {
     console.log(`\n=== Kubernetes deploy: mode=${mode}, imageContentTag=${activeContentTag} ===\n`);
     await buildImages({ contextDir: build.contextDir, contentTag: build.contentTag });
     await doctor();
+    // In kind, the host images must be loaded into the cluster before Helm
+    // references them; on docker-desktop the plan is empty (shared image store).
+    const images = await imageDefinitions(imageOpts());
+    for (const step of kindLoadPlan(context, images)) {
+      console.log(`Loading image into kind: ${step.args[2]}`);
+      execute(step.program, step.args);
+    }
     ensureNamespace();
     helm(['lint', chart, '--values', values], { quiet: true });
-    const images = await imageDefinitions(imageOpts());
     const imageArgs = images.flatMap((image) => {
       const valueName = image.component === 'shop-host' ? 'shopHost'
         : image.component === 'shop-warehouse' ? 'shopWarehouse' : 'shopPayment';
