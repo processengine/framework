@@ -47,9 +47,13 @@ const COPY_EXCLUDE = new Set([
   'node_modules', 'dist', '.artifacts', '.work', '.npm-cache', '.git', 'coverage', '.DS_Store',
 ]);
 
+// The generated package-lock.json is deliberately NOT excluded: it is a Docker
+// build input that fixes the installed bytes, so the image content tag must move
+// when it moves. Only truly generated/non-input files (vendored tarballs — counted
+// separately via their integrity — and the timestamped source manifest) are left out.
 const SOURCE_DIGEST_EXCLUDE = new Set([
   'node_modules', 'dist', '.artifacts', '.work', '.npm-cache', '.git', 'coverage', '.DS_Store',
-  'vendor', 'package-lock.json', 'source-manifest.json',
+  'vendor', 'source-manifest.json',
 ]);
 
 export function resolveMode(value) {
@@ -114,7 +118,7 @@ export async function packFramework() {
   return tarballs;
 }
 
-async function hashTree(root) {
+export async function hashTree(root) {
   const files = [];
   async function visit(directory) {
     const entries = await readdir(directory, { withFileTypes: true });
