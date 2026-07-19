@@ -1,13 +1,28 @@
 {
   "name": "@processengine/transport-kafka",
   "version": "0.1.0",
-  "description": "Apache Kafka transport connector and operation worker for ProcessEngine",
+  "description": "Apache Kafka transport and operation-worker adapter for ProcessEngine",
   "type": "module",
   "license": "Apache-2.0",
+  "keywords": [
+    "processengine",
+    "apache-kafka",
+    "kafka",
+    "kafkajs",
+    "transport",
+    "operation-worker",
+    "at-least-once",
+    "nodejs",
+    "typescript"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/processengine/framework.git",
     "directory": "processengine/packages/transport-kafka"
+  },
+  "homepage": "https://github.com/processengine/framework#readme",
+  "bugs": {
+    "url": "https://github.com/processengine/framework/issues"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

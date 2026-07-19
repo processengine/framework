@@ -75,7 +75,7 @@ describe('trusted publication workflow contract', () => {
     expect(workflow).toContain('node scripts/release-preflight.mjs "$GITHUB_REF_NAME"');
     expect(workflow).toContain('npm run check');
     expect(workflow).toContain('npm run check:packages');
-    expect(workflow.match(/npm publish --access public/gu)).toHaveLength(3);
+    expect(workflow.match(/npm publish --provenance --access public/gu)).toHaveLength(3);
     expect(conductor).toBeGreaterThan(-1);
     expect(conductor).toBeLessThan(transport);
     expect(transport).toBeLessThan(storage);

@@ -58,15 +58,15 @@ jobs:
 
       - name: Publish conductor
         working-directory: processengine/packages/conductor
-        run: npm publish --access public
+        run: npm publish --provenance --access public
 
       - name: Publish Kafka transport
         working-directory: processengine/packages/transport-kafka
-        run: npm publish --access public
+        run: npm publish --provenance --access public
 
       - name: Publish PostgreSQL storage
         working-directory: processengine/packages/storage-postgres
-        run: npm publish --access public
+        run: npm publish --provenance --access public
 
       - name: Verify clean registry install and public imports
         env:

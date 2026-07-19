@@ -1,13 +1,29 @@
 {
   "name": "@processengine/conductor",
   "version": "0.1.0",
-  "description": "Canonical ProcessEngine model, Flow3 compiler and durable conductor runtime",
+  "description": "Node.js core for durable execution of Flow3 business processes",
   "type": "module",
   "license": "Apache-2.0",
+  "keywords": [
+    "processengine",
+    "flow3",
+    "durable-execution",
+    "orchestration",
+    "workflow",
+    "business-process",
+    "conductor",
+    "at-least-once",
+    "nodejs",
+    "typescript"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/processengine/framework.git",
     "directory": "processengine/packages/conductor"
+  },
+  "homepage": "https://github.com/processengine/framework#readme",
+  "bugs": {
+    "url": "https://github.com/processengine/framework/issues"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

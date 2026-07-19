@@ -1,13 +1,29 @@
 {
   "name": "@processengine/storage-postgres",
   "version": "0.1.0",
-  "description": "Durable PostgreSQL storage adapter for ProcessEngine conductor",
+  "description": "PostgreSQL durable state, inbox/outbox, leases and migrations for ProcessEngine",
   "type": "module",
   "license": "Apache-2.0",
+  "keywords": [
+    "processengine",
+    "postgresql",
+    "postgres",
+    "storage",
+    "durable-state",
+    "outbox",
+    "inbox",
+    "migrations",
+    "nodejs",
+    "typescript"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/processengine/framework.git",
     "directory": "processengine/packages/storage-postgres"
+  },
+  "homepage": "https://github.com/processengine/framework#readme",
+  "bugs": {
+    "url": "https://github.com/processengine/framework/issues"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
