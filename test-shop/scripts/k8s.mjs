@@ -6,7 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { buildImages, contentTag, imageDefinitions, shop } from './images.mjs';
 import { prepareBuild, resolveMode, workRoot, writeSourceManifest } from './consumer.mjs';
 
-const context = 'docker-desktop';
+// Context is allowlisted, never disabled: Docker Desktop locally, or a specific
+// kind-* cluster in CI. Default is unchanged so the local contour is untouched.
+const context = process.env.K8S_CONTEXT ?? 'docker-desktop';
+if (context !== 'docker-desktop' && !/^kind-[A-Za-z0-9_.-]+$/u.test(context)) {
+  throw new Error(`Refusing Kubernetes context "${context}". Allowed: docker-desktop or kind-*.`);
+}
+const environment = context === 'docker-desktop' ? 'docker-desktop' : 'kind';
 const namespace = 'processengine-test-shop';
 const release = 'test-shop';
 const chart = path.join(shop, 'deploy/helm/test-shop');
@@ -66,7 +72,7 @@ function namespaceObject() {
 function assertOwnedNamespace(value) {
   const labels = value?.metadata?.labels ?? {};
   if (labels['processengine.io/owner'] !== 'test-shop'
-    || labels['processengine.io/environment'] !== 'docker-desktop') {
+    || labels['processengine.io/environment'] !== environment) {
     throw new Error(`Refusing to mutate unowned namespace ${namespace}`);
   }
 }
@@ -76,7 +82,7 @@ function ensureNamespace() {
   if (existing) assertOwnedNamespace(existing);
   else kubectl(['create', 'namespace', namespace], { quiet: true });
   kubectl(['label', 'namespace', namespace, '--overwrite',
-    'processengine.io/owner=test-shop', 'processengine.io/environment=docker-desktop'], { quiet: true });
+    'processengine.io/owner=test-shop', `processengine.io/environment=${environment}`], { quiet: true });
   assertOwnedNamespace(namespaceObject());
 }
 

@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Least privilege by default; jobs opt in to more only when needed.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  framework:
+    name: Framework build/check (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install framework
+        working-directory: processengine
+        run: npm ci
+      - name: Build, typecheck, unit tests
+        working-directory: processengine
+        run: npm run check
+      - name: Public API report is up to date
+        working-directory: processengine
+        run: npm run api:check
+      - name: Package tarball smoke (pack + install + import)
+        working-directory: processengine
+        run: npm run check:packages
+      - name: Dependency audit (production, high severity)
+        working-directory: processengine
+        run: npm audit --omit=dev --audit-level=high
+
+  consumer-modes:
+    name: Consumer gate (local + registry)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Deterministic gate against the current worktree
+        run: npm run check:local
+      - name: Deterministic gate against the published release
+        run: npm run check:registry
+      - name: Test-shop dependency audit (production, high severity)
+        working-directory: test-shop
+        run: npm audit --omit=dev --audit-level=high
+      - name: Working tree is clean
+        run: git diff --exit-code
+
+  live-conformance:
+    name: Live PostgreSQL + Apache Kafka conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    services:
+      postgres:
+        image: postgres:16.8-alpine
+        env:
+          POSTGRES_USER: processengine
+          POSTGRES_PASSWORD: processengine
+          POSTGRES_DB: processengine
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U processengine -d processengine"
+          --health-interval 2s --health-timeout 3s --health-retries 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Start Apache Kafka (KRaft, single node)
+        run: |
+          docker run -d --name kafka -p 9092:9092 \
+            -e KAFKA_NODE_ID=1 \
+            -e KAFKA_PROCESS_ROLES=broker,controller \
+            -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+            -e KAFKA_LISTENERS=CONTROLLER://:29093,PLAINTEXT://:9092 \
+            -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092 \
+            -e KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
+            -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+            -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:29093 \
+            -e CLUSTER_ID=4L6g3nShT-eMCtK--X86sw \
+            -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+            -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+            -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+            apache/kafka:4.3.1
+      - name: Wait for Kafka to accept connections
+        run: |
+          for _ in $(seq 1 60); do
+            if docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
+              echo "kafka ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "kafka did not become ready" >&2; exit 1
+      - name: Install framework
+        working-directory: processengine
+        run: npm ci
+      - name: Build framework
+        working-directory: processengine
+        run: npm run build
+      - name: Live PostgreSQL conformance
+        working-directory: processengine/packages/storage-postgres
+        env:
+          PROCESSENGINE_POSTGRES_URL: postgresql://processengine:processengine@localhost:5432/processengine
+        run: npm run test:live
+      - name: Live Apache Kafka conformance
+        working-directory: processengine/packages/transport-kafka
+        env:
+          KAFKA_LIVE_BROKERS: localhost:9092
+        run: npm run test:live
+
+  k8s-smoke:
+    name: Kubernetes smoke (kind, Apache Kafka + Helm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: ci
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+      - name: Deploy the local build and run business acceptance
+        env:
+          K8S_CONTEXT: kind-ci
+        run: |
+          npm run k8s:deploy:local
+          npm run k8s:test
+      - name: Upload k8s evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k8s-smoke-evidence
+          path: test-shop/.artifacts/k8s/**
+          if-no-files-found: ignore
+          retention-days: 14

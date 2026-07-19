@@ -79,7 +79,7 @@ jobs:
             "@processengine/storage-postgres@$version"
           )
           visible=false
-          for attempt in {1..12}; do
+          for _ in {1..12}; do
             visible=true
             for package in "${packages[@]}"; do
               if ! npm view "$package" version >/dev/null 2>&1; then

@@ -1,0 +1,53 @@
+name: Nightly full acceptance
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  full-acceptance:
+    name: Business 16/16 + resilience 8/8 (kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: nightly
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+      - name: Deploy the local build
+        env:
+          K8S_CONTEXT: kind-nightly
+        run: npm run k8s:deploy:local
+      - name: Business acceptance (16/16)
+        env:
+          K8S_CONTEXT: kind-nightly
+        run: npm run k8s:test
+      - name: Resilience acceptance (8/8)
+        env:
+          K8S_CONTEXT: kind-nightly
+        run: npm run k8s:resilience
+      - name: Upload evidence (always, including on failure)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-acceptance-evidence
+          path: test-shop/.artifacts/**
+          if-no-files-found: warn
+          retention-days: 30
