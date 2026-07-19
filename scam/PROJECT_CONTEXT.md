@@ -18,8 +18,15 @@ Last verified: `2026-07-19`
     and package gates.
   - **Not done**: Slice 6 (documentation rewrite), a real GitHub Actions run, and
     the full live Docker Desktop Kubernetes business/resilience acceptance.
-- **Active sub-task (PE-M3-STABILIZE)**: closed the six confirmed foundation-slice
-  blockers. Handoff: `scam/handoffs/PE-M3-stabilization.md`. Status: `DONE`.
+- **Sub-task (PE-M3-STABILIZE)**: closed six foundation-slice blockers. Handoff:
+  `scam/handoffs/PE-M3-stabilization.md`. Status: `DONE`.
+- **Sub-task (PE-M3-STABILIZE-CORRECTIVE)**: closed four review blockers —
+  signature-level API Extractor snapshots, the transition kernel removed from the
+  conductor root (→ `/testing`) with test-shop driven by the public runtime, a
+  single SemVer entrypoint map, and a safe verifiable review bundle. Contract:
+  `scam/tasks/PE-M3-STABILIZE-CORRECTIVE.md`; record:
+  `scam/work-records/PE-M3-STABILIZE-CORRECTIVE.md`; handoff:
+  `scam/handoffs/PE-M3-stabilize-corrective.md`. Status: `DONE`.
 - **Acceptance state**: the released `0.1.0` (GitHub `main`, three npm packages,
   tag `v0.1.0`) remains published and verified. PE-M3 work is unpushed and
   unpublished.
@@ -122,13 +129,16 @@ Primary evidence directories:
 
 ## PE-M3 verified state (branch `feat/post-0.1-foundation`)
 
-- `npm run check:local` exit 0; `npm run check:registry` exit 0.
-- Framework gate: `108` passed, `8` live tests skipped.
+- `npm run check:local` exit 0; `npm run check:registry` exit 0 (one test-shop
+  source, both modes).
+- Framework gate: `116` passed, `8` live tests skipped.
 - Test-shop deterministic gate: `51` passed, in **both** local and registry modes.
 - Package smoke: runtime import, external-TypeScript-consumer compile of every
   documented entrypoint, and internal-import rejection all pass.
-- API drift gate covers all published entrypoints (root + `testing`/`worker`/
-  `migrations`).
+- API drift gate uses `@microsoft/api-extractor` (dev-only) with signature-level
+  reports for all six TypeScript entrypoints (conductor + `/testing`,
+  transport-kafka + `/worker`, storage-postgres + `/migrations`); a signature
+  change trips `api:check`. The conductor root exposes no transition kernel.
 - `actionlint` passes for all workflow YAML.
 - **CI is NOT PASS**: the new GitHub Actions workflows (`.github/workflows/ci.yml`,
   `nightly.yml`) have only been validated locally; **no real Actions run has been
