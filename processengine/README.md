@@ -5,7 +5,7 @@ monorepo publishes three independent npm packages:
 
 | Package | Responsibility |
 | --- | --- |
-| `@processengine/conductor` | Flow3 DSL, canonical state, durable runtime and technology-neutral SPI |
+| `@processengine/conductor` | Node.js/TypeScript core: Flow3 DSL, canonical state, durable runtime and the storage/transport SPI |
 | `@processengine/transport-kafka` | Apache Kafka transport and operation-worker integration |
 | `@processengine/storage-postgres` | PostgreSQL state, inbox, outbox, leases and migrations |
 

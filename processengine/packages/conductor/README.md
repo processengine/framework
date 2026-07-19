@@ -1,10 +1,17 @@
 # @processengine/conductor
 
-`@processengine/conductor` is the technology-neutral ProcessEngine core. The
-package contains the Flow3 JSON compiler, canonical execution state, a pure
-state-transition kernel, the operation wire protocol, durable orchestration
-runtime and SPI contracts. Memory implementations and connector conformance
-helpers are available from `@processengine/conductor/testing`.
+`@processengine/conductor` is the Node.js/TypeScript core of ProcessEngine. It
+defines the Flow3 process model, deterministic execution semantics, the durable
+orchestration runtime, and the storage and transport SPI used by host
+applications. The core is independent of a particular broker or database; those
+capabilities are supplied by explicit connector packages — the neutrality is at
+the `MessageTransport`/`ProcessStorage` boundary, not the runtime itself.
+
+The public root API is the host/compiler/protocol/SPI surface. The pure
+state-transition kernel is internal; memory implementations, conformance helpers
+and the kernel simulation primitives are available from
+`@processengine/conductor/testing`. See `docs/SEMVER_POLICY.md` for the full
+entrypoint map.
 
 ## Ownership boundaries
 
