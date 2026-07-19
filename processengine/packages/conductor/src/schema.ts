@@ -29,6 +29,67 @@ function requiredProperties(schema: JsonSchema): Set<string> {
     : []);
 }
 
+// ---------------------------------------------------------------------------
+// ProcessEngine Operation Contract Schema Profile
+//
+// Operation contract schemas are a *bounded* profile, not arbitrary JSON Schema.
+// The compiler statically proves producer→consumer compatibility, so it accepts
+// only the keywords for which that proof is complete and rejects everything else
+// instead of silently ignoring it. See docs/OPERATION_SCHEMA_PROFILE.md.
+// ---------------------------------------------------------------------------
+
+const PROFILE_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'object', 'array', 'null']);
+// Keywords the compatibility algorithm reasons about, plus pure annotations that
+// do not affect compatibility (`title`, `description`).
+const PROFILE_KEYWORDS = new Set([
+  'type', 'enum', 'properties', 'required', 'additionalProperties', 'items', 'title', 'description',
+]);
+
+export function assertProfileSchema(schema: JsonSchema, at: string): void {
+  if (!isRecord(schema)) throw new FlowDefinitionError(`${at} must be a schema object`);
+  for (const key of Object.keys(schema)) {
+    if (!PROFILE_KEYWORDS.has(key)) {
+      throw new FlowDefinitionError(
+        `${at} uses unsupported schema keyword "${key}". The ProcessEngine Operation Contract `
+        + `Schema Profile supports only: ${[...PROFILE_KEYWORDS].join(', ')}.`,
+        { keyword: key },
+      );
+    }
+  }
+  const type = schema.type;
+  if (type !== undefined) {
+    const types = typeof type === 'string' ? [type] : Array.isArray(type) ? type : undefined;
+    if (!types || types.length === 0 || types.some((item) => typeof item !== 'string' || !PROFILE_TYPES.has(item))) {
+      throw new FlowDefinitionError(`${at}.type must be one or more of: ${[...PROFILE_TYPES].join(', ')}`);
+    }
+  }
+  if (schema.enum !== undefined && (!Array.isArray(schema.enum) || schema.enum.length === 0)) {
+    throw new FlowDefinitionError(`${at}.enum must be a non-empty array`);
+  }
+  if (schema.required !== undefined
+    && (!Array.isArray(schema.required) || schema.required.some((item) => typeof item !== 'string'))) {
+    throw new FlowDefinitionError(`${at}.required must be an array of strings`);
+  }
+  if (schema.additionalProperties !== undefined && typeof schema.additionalProperties !== 'boolean') {
+    throw new FlowDefinitionError(
+      `${at}.additionalProperties must be a boolean; object-form additionalProperties is not in the profile`,
+    );
+  }
+  if (schema.properties !== undefined) {
+    if (!isRecord(schema.properties)) throw new FlowDefinitionError(`${at}.properties must be an object`);
+    for (const [key, value] of Object.entries(schema.properties)) {
+      if (!isRecord(value)) throw new FlowDefinitionError(`${at}.properties.${key} must be a schema object`);
+      assertProfileSchema(value as JsonSchema, `${at}.properties.${key}`);
+    }
+  }
+  if (schema.items !== undefined) {
+    if (Array.isArray(schema.items) || !isRecord(schema.items)) {
+      throw new FlowDefinitionError(`${at}.items must be a single schema object; tuple items are not in the profile`);
+    }
+    assertProfileSchema(schema.items as JsonSchema, `${at}.items`);
+  }
+}
+
 export function schemasCompatible(producer: JsonSchema, consumer: JsonSchema): boolean {
   const producerTypes = schemaTypes(producer);
   const consumerTypes = schemaTypes(consumer);
@@ -45,7 +106,7 @@ export function schemasCompatible(producer: JsonSchema, consumer: JsonSchema): b
     if (producerEnum.some((value) => !accepted.has(JSON.stringify(value)))) return false;
   }
 
-  if (consumerTypes?.has('object') || requiredProperties(consumer).size > 0) {
+  if (consumerTypes?.has('object') || requiredProperties(consumer).size > 0 || consumer.additionalProperties === false) {
     const producerRequired = requiredProperties(producer);
     const consumerRequired = requiredProperties(consumer);
     const producerProperties = schemaProperties(producer);
@@ -55,6 +116,14 @@ export function schemasCompatible(producer: JsonSchema, consumer: JsonSchema): b
       const expected = consumerProperties[key];
       const actual = producerProperties[key];
       if (expected && (!actual || !schemasCompatible(actual, expected))) return false;
+    }
+    // A closed consumer (additionalProperties:false) rejects any property it does
+    // not declare, so the producer must be closed too and must not declare a
+    // property outside the consumer's known set.
+    if (consumer.additionalProperties === false) {
+      if (producer.additionalProperties !== false) return false;
+      const allowed = new Set(Object.keys(consumerProperties));
+      for (const key of Object.keys(producerProperties)) if (!allowed.has(key)) return false;
     }
   }
 

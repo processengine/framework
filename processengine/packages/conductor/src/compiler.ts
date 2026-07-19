@@ -1,6 +1,6 @@
 import { FlowDefinitionError } from './errors.js';
 import { cloneJson, deepFreeze, digestJson, isRecord } from './json.js';
-import { assertSwitchSchema, schemasCompatible, withCoreOperationErrors } from './schema.js';
+import { assertProfileSchema, assertSwitchSchema, schemasCompatible, withCoreOperationErrors } from './schema.js';
 import type {
   CompileFlowOptions,
   CompiledProcessDefinition,
@@ -218,7 +218,23 @@ function validateDefinition(definition: ProcessDefinition, options: CompileFlowO
     }
   }
 
+  if (options.processInputSchema) {
+    assertProfileSchema(options.processInputSchema, 'processInputSchema');
+  }
+
   if (options.operations) {
+    // Every operation contract schema the compiler reasons about must lie inside
+    // the declared profile; unsupported keywords are rejected, never ignored.
+    const validated = new Set<string>();
+    for (const step of Object.values(definition.steps)) {
+      if (step.type !== 'operation' || validated.has(step.operation)) continue;
+      validated.add(step.operation);
+      const contract = contractFor(step.operation, options, true)!;
+      if (contract.inputSchema) assertProfileSchema(contract.inputSchema, `operation ${step.operation} inputSchema`);
+      if (contract.responseSchema) assertProfileSchema(contract.responseSchema, `operation ${step.operation} responseSchema`);
+      if (contract.errorSchema) assertProfileSchema(contract.errorSchema, `operation ${step.operation} errorSchema`);
+    }
+
     const startContract = contractFor(start.operation, options, true)!;
     if (options.processInputSchema && startContract.inputSchema
       && !schemasCompatible(options.processInputSchema, startContract.inputSchema)) {
